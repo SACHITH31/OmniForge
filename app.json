@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "OmniForge",
+    "slug": "omniforge",
+    "scheme": "omniforge",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "android": { "package": "com.omniforge.app", "edgeToEdgeEnabled": true },
+    "plugins": ["expo-document-picker"]
+  }
+}

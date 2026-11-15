@@ -1,0 +1,37 @@
+{
+  "name": "omniforge",
+  "version": "0.1.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "export": "expo export --platform android",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --runInBand",
+    "check": "npm run typecheck && npm test -- --watch=false && npm run export",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "expo": "~54.0.38",
+    "expo-document-picker": "~14.0.8",
+    "expo-file-system": "~19.0.24",
+    "expo-image-manipulator": "~14.0.8",
+    "expo-print": "~15.0.8",
+    "expo-sharing": "~14.0.8",
+    "expo-status-bar": "~3.0.9",
+    "expo-system-ui": "~6.0.9",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/react": "~19.1.10",
+    "babel-preset-expo": "~54.0.0",
+    "jest": "^29.7.0",
+    "jest-expo": "~54.0.0",
+    "typescript": "~5.9.2"
+  }
+}
