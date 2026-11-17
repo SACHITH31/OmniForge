@@ -38,6 +38,8 @@ jobs:
         run: cd android && ./gradlew :app:assembleRelease --no-daemon
       - name: Name APK
         run: cp android/app/build/outputs/apk/release/app-release.apk CRBA.apk
+      - name: Verify bundled JavaScript
+        run: unzip -Z1 CRBA.apk | grep -Fx 'assets/index.android.bundle'
       - uses: actions/upload-artifact@v4
         with:
           name: CRBA
