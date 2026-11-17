@@ -45,3 +45,26 @@ jobs:
           name: CRBA
           path: CRBA.apk
           if-no-files-found: error
+  android-smoke:
+    needs: android-apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: CRBA
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch standalone APK on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          script: |
+            adb install CRBA.apk
+            adb shell am start -W -n com.omniforge.app/.MainActivity
+            sleep 15
+            adb shell uiautomator dump /sdcard/window.xml
+            adb shell cat /sdcard/window.xml | grep -F 'YOUR OFFLINE WORKSPACE'
