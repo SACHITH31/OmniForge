@@ -212,6 +212,27 @@ def share_and_open(checksum):
     print("Share and Open delivered the exact exported JPEG bytes to an independent Android app.", flush=True)
 
 
+def library_favorites():
+    name = "omniforge-fixture-converted.jpg"
+    tap("Files")
+    tap("Favorite " + name, scroll=True)
+    tap("Filter Favorites", scroll=True)
+    tap("Sort by Newest", scroll=True)
+    tap("View " + name, scroll=True)
+    wait_node("Preview of " + name, scroll=True)
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    wait_node("Sort by Name", scroll=True)
+    assert wait_node("Filter Favorites", scroll=True).get("checked") == "true"
+    adb("shell", "am", "force-stop", "com.omniforge.app")
+    adb("shell", "am", "start", "-W", "-n", "com.omniforge.app/.MainActivity")
+    wait_node("Pinned to your workspace", scroll=True)
+    tap("Files")
+    tap("Filter Favorites", scroll=True)
+    tap("Favorite " + name, scroll=True)
+    wait_node("Star a file to find it here and on Home.", scroll=True)
+    print("Favorite survived restart, sort and filter survived Back, and unpin updated the library.", flush=True)
+
+
 def pdf_scenarios():
     tap("PDF Studio")
     tap("Choose image & create PDF", scroll=True)
@@ -295,5 +316,8 @@ if __name__ == "__main__":
     if conversion_ok:
         _, handoff_ok = run_scenario("Share and Open", share_and_open, checksum)
     _, pdf_ok = run_scenario("PDF creation, import and viewing", pdf_scenarios)
-    if not (conversion_ok and handoff_ok and pdf_ok):
+    library_ok = False
+    if conversion_ok:
+        _, library_ok = run_scenario("persistent file favorites", library_favorites)
+    if not (conversion_ok and handoff_ok and pdf_ok and library_ok):
         raise SystemExit(1)
