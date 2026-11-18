@@ -110,9 +110,9 @@ def multipage_fixture():
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 7 0 R >> >> /Contents 5 0 R >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Contents 6 0 R >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>",
     ]
-    for commands in [b"0 0 1 rg 10 10 100 100 re f 0 g BT /F1 12 Tf 30 340 Td (Name: 1234) Tj ET", b"1 0 0 rg 20 20 100 100 re f"]:
+    for commands in [b"0 0 1 rg 10 10 100 100 re f 0 g BT /F1 12 Tf 30 340 Td (Name: 1234) Tj ET", b"1 0 0 rg 20 20 100 100 re f 0 g BT /F1 12 Tf 30 240 Td (Invoice 482) Tj ET"]:
         objects.append(b"<< /Length %d >>\nstream\n" % len(commands) + commands + b"\nendstream")
     objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
     pdf = bytearray(b"%PDF-1.4\n")
@@ -245,6 +245,16 @@ def pdf_scenarios():
     tap("Read page text", scroll=True)
     wait_node("Name: 1234", scroll=True)
     print("Read the original text layer from the PDF fixture.", flush=True)
+
+    tap("Find in PDF", scroll=True)
+    tap("PDF search query")
+    adb("shell", "input", "text", "482")
+    tap("Search document")
+    wait_node("1 matching page")
+    tap("Page 2 · 1 match")
+    reset_result_scroll()
+    wait_node("PDF preview, page 2")
+    print("Found text on another PDF page and jumped to the match.", flush=True)
 
 
 def run_scenario(name, scenario, *args):
