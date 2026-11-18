@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, BackHandler, Image, Platform, Pressable, ScrollView, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, BackHandler, Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -221,6 +221,8 @@ function PdfPreview({ file }: { file: StoredFile }) {
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(false);
   const [showText, setShowText] = useState(false);
+  const [jump, setJump] = useState<string | null>(null);
+  const [jumpError, setJumpError] = useState('');
   const [page, setPage] = useState<PdfPage | null>(null);
   const [error, setError] = useState('');
   const [viewport, setViewport] = useState(0);
@@ -235,6 +237,17 @@ function PdfPreview({ file }: { file: StoredFile }) {
     );
     return () => { active = false; };
   }, [file, index, zoom]);
+
+  function jumpToPage() {
+    const value = (jump ?? '').trim();
+    const requested = Number(value);
+    if (!/^\d+$/.test(value) || !page || requested < 1 || requested > page.pageCount) {
+      setJumpError(`Enter a page number between 1 and ${page?.pageCount ?? 1}.`);
+      return;
+    }
+    setIndex(requested - 1);
+    setJump(null);
+  }
 
   const imageWidth = viewport * (zoom ? 1.65 : 1);
   return <View style={{ marginBottom: 16 }} onLayout={event => setViewport(event.nativeEvent.layout.width)}>
@@ -253,6 +266,10 @@ function PdfPreview({ file }: { file: StoredFile }) {
         {page.pageCount > 1 && <>
           <Action label="Previous page" onPress={() => setIndex(index - 1)} disabled={index === 0} secondary />
           <Action label="Next page" onPress={() => setIndex(index + 1)} disabled={index + 1 === page.pageCount} secondary />
+          <Action label="Jump to page" onPress={() => {
+            setJumpError('');
+            setJump(String(index + 1));
+          }} secondary />
         </>}
         <Action label={zoom ? 'Fit to width' : 'Zoom in'} onPress={() => setZoom(!zoom)} secondary />
         {Platform.OS === 'android' && Number(Platform.Version) >= 35 &&
@@ -260,6 +277,23 @@ function PdfPreview({ file }: { file: StoredFile }) {
         {showText && <PdfPageText key={index} file={file} index={index} />}
       </View>
     </>}
+    <Modal visible={jump !== null} transparent animationType="fade" onRequestClose={() => setJump(null)}>
+      <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#0008' }}>
+        <View accessibilityViewIsModal style={[styles.panel, { width: '100%', maxWidth: 420, alignSelf: 'center', gap: 10 }]}>
+          <Text accessibilityRole="header" style={styles.panelTitle}>Jump to page</Text>
+          <Text style={styles.panelCopy}>Choose a page from 1 to {page?.pageCount ?? 1}.</Text>
+          <View style={styles.searchBox}>
+            <TextInput accessibilityLabel="Page number" keyboardType="number-pad"
+              maxLength={String(page?.pageCount ?? 1).length} selectTextOnFocus
+              value={jump ?? ''} onChangeText={value => { setJump(value); setJumpError(''); }}
+              onSubmitEditing={jumpToPage} style={styles.searchInput} />
+          </View>
+          {!!jumpError && <Text accessibilityRole="alert" style={{ color: C.danger }}>{jumpError}</Text>}
+          <Action label="Go to page" onPress={jumpToPage} />
+          <Action label="Cancel" onPress={() => setJump(null)} secondary />
+        </View>
+      </View>
+    </Modal>
   </View>;
 }
 
