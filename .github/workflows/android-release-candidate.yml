@@ -26,3 +26,62 @@ jobs:
   validate:
     needs: preflight
     uses: ./.github/workflows/validate.yml
+  sign:
+    needs: validate
+    if: vars.ANDROID_RELEASE_SIGNING_ENABLED == 'true'
+    environment: android-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'build-tools;36.0.0 platform-tools platforms;android-36'
+      - uses: actions/download-artifact@v4
+        with:
+          name: CRBA
+      - name: Verify candidate provenance
+        run: |
+          test "$(cat source-commit.txt)" = "$(git rev-parse HEAD)"
+          sha256sum -c SHA256SUMS.txt
+          test "$BACKUP_CONFIRMED" = true
+        env:
+          BACKUP_CONFIRMED: ${{ vars.ANDROID_RELEASE_BACKUP_CONFIRMED }}
+      - name: Sign and verify candidate
+        run: bash scripts/sign-android-apk.sh CRBA.apk "OmniForge-$GITHUB_REF_NAME.apk"
+        env:
+          ANDROID_RELEASE_KEYSTORE_B64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_B64 }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_CERT_SHA256: ${{ vars.ANDROID_RELEASE_CERT_SHA256 }}
+      - name: Prepare emulator test receiver
+        run: bash scripts/android-receiver/build.sh "$RUNNER_TEMP/receiver.apk"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Test signed candidate on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          script: |
+            adb install "$RUNNER_TEMP/receiver.apk"
+            adb install "OmniForge-$GITHUB_REF_NAME.apk"
+            adb shell am start -W -n com.omniforge.app/.MainActivity
+            python3 scripts/test_android_results.py
+      - name: Record signed APK checksum
+        run: sha256sum "OmniForge-$GITHUB_REF_NAME.apk" > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-candidate-${{ github.ref_name }}
+          path: |
+            OmniForge-${{ github.ref_name }}.apk
+            SHA256SUMS.txt
+            source-commit.txt
+          if-no-files-found: error
