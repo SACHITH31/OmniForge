@@ -83,9 +83,13 @@ def fixture():
 def choose_download(name):
     tap("Show roots")
     tap("Downloads")
+    time.sleep(0.7)
+    if any(node.get("text") == "Recent files" for node in hierarchy()):
+        tap("Show roots")
+        tap("Downloads")
     if any(node.get("content-desc") == "List view" for node in hierarchy()):
         tap("List view")
-    tap(name, prefer_text=True)
+    tap(name, prefer_text=True, scroll=True)
 
 
 def choose_image():
@@ -116,6 +120,8 @@ def multipage_fixture():
         path = Path(directory) / "omniforge-two-pages.pdf"
         path.write_bytes(pdf)
         adb("push", str(path), "/sdcard/Download/omniforge-two-pages.pdf")
+        adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+            "-d", "file:///sdcard/Download/omniforge-two-pages.pdf")
 
 
 fixture()
