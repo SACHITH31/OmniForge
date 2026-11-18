@@ -63,7 +63,8 @@ export async function loadSettings(): Promise<AppSettings> {
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
     const parsed = raw ? JSON.parse(raw) as Partial<AppSettings> : {};
-    return { jpegQuality: typeof parsed.jpegQuality === 'number' && parsed.jpegQuality >= 0.1 && parsed.jpegQuality <= 1 ? parsed.jpegQuality : DEFAULT_SETTINGS.jpegQuality };
+    return { appearance: parsed.appearance === 'light' || parsed.appearance === 'dark' ? parsed.appearance : 'system',
+      jpegQuality: typeof parsed.jpegQuality === 'number' && parsed.jpegQuality >= 0.1 && parsed.jpegQuality <= 1 ? parsed.jpegQuality : DEFAULT_SETTINGS.jpegQuality };
   } catch {
     return DEFAULT_SETTINGS;
   }

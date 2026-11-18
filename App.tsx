@@ -43,19 +43,39 @@ function Action({ label, icon, onPress, secondary, disabled }: { label: string; 
 }
 
 export default function App() {
-  const theme = themes[useColorScheme() === 'light' ? 'light' : 'dark'];
+  const systemMode = useColorScheme() === 'light' ? 'light' : 'dark';
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const latest = useRef(DEFAULT_SETTINGS);
+  const ready = useRef(false);
+  const pending = useRef(Promise.resolve());
+  useEffect(() => {
+    let active = true;
+    loadSettings().then(value => {
+      if (active) { latest.current = value; setSettings(value); ready.current = true; }
+    });
+    return () => { active = false; };
+  }, []);
+  function updateSettings(change: Partial<AppSettings>) {
+    if (!ready.current) return;
+    const next = { ...latest.current, ...change };
+    latest.current = next;
+    setSettings(next);
+    pending.current = pending.current.then(() => saveSettings(next)).catch(() => {
+      Alert.alert('Could not save preferences', 'Your selection applies for this session.');
+    });
+  }
+  const theme = themes[settings.appearance === 'system' ? systemMode : settings.appearance];
   return <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-    <WorkspaceTheme.Provider value={theme}><Workspace /></WorkspaceTheme.Provider>
+    <WorkspaceTheme.Provider value={theme}><Workspace settings={settings} updateSettings={updateSettings} /></WorkspaceTheme.Provider>
   </SafeAreaProvider>;
 }
 
-function Workspace() {
+function Workspace({ settings, updateSettings }: { settings: AppSettings; updateSettings: (change: Partial<AppSettings>) => void }) {
   const { C, styles, mode } = useWorkspaceTheme();
   const [screen, setScreen] = useState<Screen>('Home');
   const [resultRoute, setResultRoute] = useState<ResultRoute | null>(null);
   const [libraryView, setLibraryView] = useState<LibraryView>({ search: '', filter: 'All', order: 'Newest' });
   const [files, setFiles] = useState<StoredFile[]>([]);
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [busy, setBusy] = useState<string | null>(null);
   const [format, setFormat] = useState<OutputFormat>('jpeg');
   const { width } = useWindowDimensions();
@@ -64,7 +84,7 @@ function Workspace() {
   const favorites = files.filter(file => file.favorite);
 
   const refresh = useCallback(async () => setFiles(await loadFiles()), []);
-  useEffect(() => { refresh().catch(() => {}); loadSettings().then(setSettings).catch(() => {}); }, [refresh]);
+  useEffect(() => { refresh().catch(() => {}); }, [refresh]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (resultRoute) {
@@ -97,11 +117,7 @@ function Workspace() {
     finally { setBusy(null); }
   };
   const showError = (error: unknown) => Alert.alert('Could not complete action', error instanceof Error ? error.message : 'Please try again.');
-  const updateQuality = async (quality: number) => {
-    const next = { jpegQuality: quality };
-    setSettings(next);
-    try { await saveSettings(next); } catch (error) { showError(error); }
-  };
+  const updateQuality = (jpegQuality: number) => updateSettings({ jpegQuality });
   const imageTask = (kind: 'convert' | 'compress' | 'pdf') => run(kind === 'pdf' ? 'Creating PDF' : kind === 'compress' ? 'Compressing image' : 'Converting image', async () => {
     const asset = await pickImage();
     if (!asset) return null;
@@ -157,7 +173,17 @@ function Workspace() {
       {screen === 'Image Tools' && <><ScreenHeading kicker="IMAGE TOOLS" title="Keep the detail. Lose the weight." subtitle="Compress a JPEG or PNG into a smaller JPEG copy. Compare the size when it finishes." /><Panel><Text style={styles.fieldLabel}>JPEG QUALITY · {Math.round(settings.jpegQuality * 100)}%</Text><View style={styles.qualityRow}>{[0.45, 0.72, 0.9].map((value, index) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: settings.jpegQuality === value }} onPress={() => updateQuality(value)} style={[styles.qualityOption, settings.jpegQuality === value && styles.qualitySelected]}><Text style={[styles.qualityText, settings.jpegQuality === value && { color: C.onAccent }]}>{['Small', 'Balanced', 'High'][index]}</Text></Pressable>)}</View><Text style={styles.hint}>Photos with large flat areas may not become smaller. PNG transparency becomes an opaque JPEG.</Text><Action label="Choose image & compress" icon="contract-outline" onPress={() => imageTask('compress')} disabled={!!busy} /></Panel></>}
       {screen === 'Recent' && <FileLibrary files={files} view={libraryView} onViewChange={setLibraryView} onOpen={file => setResultRoute({ file, from: 'Recent' })}
         onShare={file => shareFile(file).catch(showError)} onFavorite={file => toggleFavorite(file.id).then(setFiles).catch(showError)} />}
-      {screen === 'Settings' && <><ScreenHeading kicker="SETTINGS" title="Your space, your rules." subtitle="OmniForge processes files on this device and stores outputs locally." /><Panel><Text style={styles.panelTitle}>Default JPEG quality</Text><Text style={styles.panelCopy}>Used for image conversion and compression.</Text><View style={styles.qualityRow}>{[0.45, 0.72, 0.9].map((value, index) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: settings.jpegQuality === value }} onPress={() => updateQuality(value)} style={[styles.qualityOption, settings.jpegQuality === value && styles.qualitySelected]}><Text style={[styles.qualityText, settings.jpegQuality === value && { color: C.onAccent }]}>{['45%', '72%', '90%'][index]}</Text></Pressable>)}</View></Panel><Panel><Text style={styles.panelTitle}>Local library</Text><Text style={styles.panelCopy}>{files.length} saved files. Clearing removes the app's stored copies and history.</Text><Action label="Clear saved files" icon="trash-outline" secondary onPress={() => Alert.alert('Clear saved files?', 'This deletes OmniForge copies from this device.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => { clearFiles().then(refresh).catch(showError); } }])} /></Panel><Text style={styles.version}>OmniForge 0.1.0 · Offline first</Text></>}
+      {screen === 'Settings' && <><ScreenHeading kicker="SETTINGS" title="Your space, your rules." subtitle="OmniForge processes files on this device and stores outputs locally." />
+        <Panel><Text style={styles.panelTitle}>Appearance</Text>
+          <View style={[styles.qualityRow, { marginBottom: 0 }]}>{(['system', 'light', 'dark'] as const).map(value => {
+            const selected = settings.appearance === value;
+            const label = value === 'system' ? 'System' : value === 'light' ? 'Light' : 'Dark';
+            return <Pressable key={value} accessibilityRole="radio" accessibilityLabel={label + ' theme'} accessibilityState={{ checked: selected }}
+              onPress={() => updateSettings({ appearance: value })} style={[styles.qualityOption, { minHeight: 48 }, selected && styles.qualitySelected]}>
+              <Text style={[styles.qualityText, selected && { color: C.onAccent }]}>{label}</Text>
+            </Pressable>;
+          })}</View>
+        </Panel><Panel><Text style={styles.panelTitle}>Default JPEG quality</Text><Text style={styles.panelCopy}>Used for image conversion and compression.</Text><View style={styles.qualityRow}>{[0.45, 0.72, 0.9].map((value, index) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: settings.jpegQuality === value }} onPress={() => updateQuality(value)} style={[styles.qualityOption, settings.jpegQuality === value && styles.qualitySelected]}><Text style={[styles.qualityText, settings.jpegQuality === value && { color: C.onAccent }]}>{['45%', '72%', '90%'][index]}</Text></Pressable>)}</View></Panel><Panel><Text style={styles.panelTitle}>Local library</Text><Text style={styles.panelCopy}>{files.length} saved files. Clearing removes the app's stored copies and history.</Text><Action label="Clear saved files" icon="trash-outline" secondary onPress={() => Alert.alert('Clear saved files?', 'This deletes OmniForge copies from this device.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => { clearFiles().then(refresh).catch(showError); } }])} /></Panel><Text style={styles.version}>OmniForge 0.1.0 · Offline first</Text></>}
       </>}
     </ScrollView></Animated.View>
     {busy && <View accessibilityLiveRegion="polite" style={styles.busy}><ActivityIndicator color={C.mint} /><Text style={styles.busyText}>{busy}…</Text></View>}

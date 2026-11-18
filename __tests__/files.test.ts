@@ -1,4 +1,4 @@
-import { convertImage, imageToPdf, loadFiles, saveEditedPdf, savePdfPageImage, toggleFavorite } from '../src/core/files';
+import { convertImage, imageToPdf, loadFiles, loadSettings, saveSettings, saveEditedPdf, savePdfPageImage, toggleFavorite } from '../src/core/files';
 
 jest.mock('../src/core/androidOutput', () => ({ writePdfPageImage: jest.fn() }));
 
@@ -104,4 +104,11 @@ test('favorites a legacy record and preserves simultaneous toggles', async () =>
   await Promise.all([toggleFavorite(pdf.id), toggleFavorite(pdf.id)]);
   expect(await loadFiles()).toEqual([{ ...pdf, favorite: true }]);
   await expect(toggleFavorite('missing')).rejects.toThrow('no longer');
+});
+
+test('restores old JPEG settings with system appearance and persists an explicit theme', async () => {
+  memory['omniforge.settings.v1'] = JSON.stringify({ jpegQuality: 0.9 });
+  expect(await loadSettings()).toEqual({ jpegQuality: 0.9, appearance: 'system' });
+  await saveSettings({ jpegQuality: 0.9, appearance: 'dark' });
+  expect(await loadSettings()).toEqual({ jpegQuality: 0.9, appearance: 'dark' });
 });
