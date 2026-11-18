@@ -35,19 +35,20 @@ npm test -- --watch=false
 npm run export
 ```
 
-`npm run export` verifies that the Android JavaScript bundle builds. Unit tests check supported formats, output naming, local record persistence, conversion options, and image embedding for PDF generation. Device integration still needs a physical Android device or emulator.
+`npm run export` verifies that the Android JavaScript bundle builds. Unit tests check supported formats, output naming, local record persistence, conversion options, and image embedding for PDF generation. CI also installs the release APK in an emulator and checks that the home screen appears; conversion and sharing flows still need device testing.
 
 ## Build an Android APK
 
 With JDK 17 and the Android SDK installed:
 
 ```sh
+npm ci
 npx expo prebuild --platform android --no-install
 cd android
-./gradlew assembleDebug
+./gradlew :app:assembleRelease
 ```
 
-The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions runs this build and uploads the APK as an artifact on pull requests. To create a signed release build, configure Android signing separately.
+The release APK is written to `android/app/build/outputs/apk/release/app-release.apk`. GitHub Actions builds it, checks for the bundled JavaScript, uploads it as `CRBA.apk`, and runs an emulator startup smoke test. CI builds are test artifacts: configure a securely retained release keystore and verify the certificate before distributing an updateable official release.
 
 ## Structure
 
@@ -55,4 +56,4 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 - `src/core/files.ts` — local file picking, conversion, PDF creation, storage, and sharing
 - `src/core/types.ts` — file and settings interfaces plus pure helpers
 - `__tests__/` — automated unit tests
-- `.github/workflows/validate.yml` — CI checks and debug APK build
+- `.github/workflows/validate.yml` — CI checks and release APK build
