@@ -10,6 +10,7 @@ This file tracks notable changes to OmniForge. The format follows [Keep a Change
 - Import PDFs and manage recent local files with filename search.
 - Preview saved JPEG, PNG, and PDF outputs. Navigate PDFs by page number or rendered thumbnail, and zoom in on the current page.
 - Select PDF text and search across pages on Android 15 or newer.
+- Save a PDF page as a separate JPEG and return to the original PDF after previewing it.
 - Share saved files, export copies to an Android document folder, and open them with compatible apps.
 - Follow the system light or dark appearance.
 
