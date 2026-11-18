@@ -11,7 +11,10 @@ export type PdfTextBlock = {
 
 export type PdfSearchHit = { pageIndex: number; count: number };
 
+export type PdfThumbnail = Omit<PdfPage, 'pageCount'> & { pageIndex: number };
+
 type OutputModule = {
+  renderPdfThumbnails(source: string, first: number, count: number): Promise<PdfThumbnail[]>;
   searchPdfPages(source: string, query: string, first: number, count: number): Promise<PdfSearchHit[]>;
   readPdfText(source: string, index: number): Promise<PdfTextBlock[]>;
   renderPdfPage(source: string, index: number, maxSide: number): Promise<PdfPage>;
@@ -63,4 +66,8 @@ export async function readPdfText(file: StoredFile, index: number): Promise<PdfT
 
 export async function searchPdfPages(file: StoredFile, query: string, first: number, count: number): Promise<PdfSearchHit[]> {
   return androidOutput().searchPdfPages(file.uri, query, first, count);
+}
+
+export async function renderPdfThumbnails(file: StoredFile, first: number, count: number): Promise<PdfThumbnail[]> {
+  return androidOutput().renderPdfThumbnails(file.uri, first, count);
 }

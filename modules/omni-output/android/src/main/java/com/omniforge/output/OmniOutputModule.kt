@@ -53,27 +53,23 @@ class OmniOutputModule : Module() {
       openPdf(source).use { document ->
         require(index in 0 until document.pageCount) { "This PDF has no page at that position." }
         document.openPage(index).use { page ->
-          val scale = maxSide.toDouble() / maxOf(page.width, page.height)
-          val width = (page.width * scale).roundToInt().coerceAtLeast(1)
-          val height = (page.height * scale).roundToInt().coerceAtLeast(1)
-          val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-          try {
-            bitmap.eraseColor(Color.WHITE)
-            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            val bytes = ByteArrayOutputStream()
-            check(bitmap.compress(Bitmap.CompressFormat.JPEG, 88, bytes))
-            mapOf(
-              "uri" to ("data:image/jpeg;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)),
-              "width" to width,
-              "height" to height,
-              "pageCount" to document.pageCount
-            )
-          } finally {
-            bitmap.recycle()
+          renderPage(page, maxSide) + ("pageCount" to document.pageCount)
+        }
+      }
+    }
+
+    AsyncFunction("renderPdfThumbnails") { source: String, first: Int, count: Int ->
+      require(first >= 0 && count in 1..8)
+      openPdf(source).use { document ->
+        val end = minOf(document.pageCount.toLong(), first.toLong() + count).toInt()
+        (first until end).map { index ->
+          document.openPage(index).use { page ->
+            renderPage(page, 240) + ("pageIndex" to index)
           }
         }
       }
     }
+
     AsyncFunction("searchPdfPages") { source: String, query: String, first: Int, count: Int ->
       if (Build.VERSION.SDK_INT < 35) {
         throw UnsupportedOperationException("PDF search requires Android 15 or later.")
@@ -106,6 +102,26 @@ class OmniOutputModule : Module() {
           }
         }
       }
+    }
+  }
+
+  private fun renderPage(page: PdfRenderer.Page, maxSide: Int): Map<String, Any> {
+    val scale = maxSide.toDouble() / maxOf(page.width, page.height).coerceAtLeast(1)
+    val width = (page.width * scale).roundToInt().coerceAtLeast(1)
+    val height = (page.height * scale).roundToInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    try {
+      bitmap.eraseColor(Color.WHITE)
+      page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+      val bytes = ByteArrayOutputStream()
+      check(bitmap.compress(Bitmap.CompressFormat.JPEG, 88, bytes))
+      return mapOf(
+        "uri" to ("data:image/jpeg;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)),
+        "width" to width,
+        "height" to height
+      )
+    } finally {
+      bitmap.recycle()
     }
   }
 

@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, saveSettings, shareFile } from './src/core/files';
 import { exportOutput, openOutput, renderPdfPage, readPdfText, type PdfPage } from './src/core/androidOutput';
+import { PdfThumbnails } from './src/ui/PdfThumbnails';
 import { PdfSearch } from './src/ui/PdfSearch';
 import { themes, useWorkspaceTheme, WorkspaceTheme } from './src/ui/theme';
 import { AppSettings, DEFAULT_SETTINGS, formatBytes, OutputFormat, StoredFile } from './src/core/types';
@@ -223,6 +224,7 @@ function PdfPreview({ file }: { file: StoredFile }) {
   const [zoom, setZoom] = useState(false);
   const [showText, setShowText] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [thumbnailsOpen, setThumbnailsOpen] = useState(false);
   const [jump, setJump] = useState<string | null>(null);
   const [jumpError, setJumpError] = useState('');
   const [page, setPage] = useState<PdfPage | null>(null);
@@ -268,6 +270,7 @@ function PdfPreview({ file }: { file: StoredFile }) {
         {page.pageCount > 1 && <>
           <Action label="Previous page" onPress={() => setIndex(index - 1)} disabled={index === 0} secondary />
           <Action label="Next page" onPress={() => setIndex(index + 1)} disabled={index + 1 === page.pageCount} secondary />
+          <Action label="Browse page thumbnails" onPress={() => setThumbnailsOpen(true)} secondary />
           <Action label="Jump to page" onPress={() => {
             setJumpError('');
             setJump(String(index + 1));
@@ -281,6 +284,11 @@ function PdfPreview({ file }: { file: StoredFile }) {
         {showText && <PdfPageText key={index} file={file} index={index} />}
       </View>
     </>}
+    {thumbnailsOpen && page && <PdfThumbnails file={file} pageCount={page.pageCount} current={index}
+      onClose={() => setThumbnailsOpen(false)} onSelect={pageIndex => {
+        setThumbnailsOpen(false);
+        setIndex(pageIndex);
+      }} />}
     {searchOpen && page && <PdfSearch file={file} pageCount={page.pageCount}
       onClose={() => setSearchOpen(false)} onSelect={pageIndex => {
         setSearchOpen(false);
