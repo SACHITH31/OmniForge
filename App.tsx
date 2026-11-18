@@ -159,7 +159,7 @@ function FileResult({ file, onBack }: {
         source={{ uri: file.uri }}
         style={styles.outputImage}
         resizeMode="contain"
-        accessibilityLabel={`Preview of ${file.name}`}
+        accessibilityLabel={preview === 'ready' ? `Preview of ${file.name}` : undefined}
         onLoad={() => setPreview('ready')}
         onError={() => setPreview('failed')}
       />}

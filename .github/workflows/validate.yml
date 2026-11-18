@@ -49,6 +49,7 @@ jobs:
     needs: android-apk
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: CRBA
@@ -68,3 +69,4 @@ jobs:
             sleep 15
             adb shell uiautomator dump /sdcard/window.xml
             adb shell cat /sdcard/window.xml | grep -F 'YOUR OFFLINE WORKSPACE'
+            python3 scripts/test_android_results.py
