@@ -256,6 +256,13 @@ def pdf_scenarios():
     wait_node("PDF preview, page 2")
     print("Found text on another PDF page and jumped to the match.", flush=True)
 
+    tap("Browse page thumbnails", scroll=True)
+    wait_node("Pages 1–2 of 2")
+    tap("Open page 1")
+    reset_result_scroll()
+    wait_node("PDF preview, page 1")
+    print("Rendered the two-page thumbnail grid and opened page one from it.", flush=True)
+
 
 def run_scenario(name, scenario, *args):
     try:
