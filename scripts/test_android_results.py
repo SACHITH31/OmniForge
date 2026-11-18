@@ -7,6 +7,7 @@ import struct
 import subprocess
 import tempfile
 import time
+import traceback
 import xml.etree.ElementTree as ET
 import zlib
 from pathlib import Path
@@ -128,32 +129,6 @@ def multipage_fixture():
             "-d", "file:///sdcard/Download/omniforge-two-pages.pdf")
 
 
-fixture()
-multipage_fixture()
-tap("Convert")
-tap("Choose image & convert", scroll=True)
-choose_image()
-wait_node("omniforge-fixture-converted.jpg")
-wait_node("Preview of omniforge-fixture-converted.jpg", scroll=True)
-print("Converted PNG to JPEG and loaded its saved image preview.", flush=True)
-# Scroll the action fully into view. Accessibility bounds can include clipped
-# children near the navigation bar on the small emulator display.
-swipe_up()
-swipe_up()
-tap("Export a copy", scroll=True)
-# ACTION_OPEN_DOCUMENT_TREE opens internal storage directly on this AVD.
-tap("Download", scroll=True)
-tap("OmniForgeQA")
-tap("Use this folder")
-tap("Allow")
-wait_node("Copy saved to the selected folder.", scroll=True)
-with tempfile.TemporaryDirectory() as directory:
-    exported = Path(directory) / "converted.jpg"
-    adb("pull", "/sdcard/Download/OmniForgeQA/omniforge-fixture-converted.jpg", str(exported))
-    jpeg = exported.read_bytes()
-    assert jpeg[:3] == b"\xff\xd8\xff" and jpeg[-2:] == b"\xff\xd9", "Export is not a complete JPEG"
-print("Converted PNG to JPEG, rendered the saved output, and exported JPEG bytes.", flush=True)
-
 def verify_receiver(action, checksum):
     expected = f"QA received {action} {checksum}"
     for _ in range(8):
@@ -176,48 +151,104 @@ def reset_result_scroll():
         adb("shell", "input", "swipe", str(width // 2), str(height // 4),
             str(width // 2), str(height * 3 // 5), "400")
 
-checksum = hashlib.sha256(jpeg).hexdigest()
-reset_result_scroll()
-swipe_up()
-tap("Share file", scroll=True)
-verify_receiver("Share", checksum)
-adb("shell", "input", "keyevent", "KEYCODE_BACK")
-tap("Open with another app", scroll=True)
-verify_receiver("Open", checksum)
-adb("shell", "input", "keyevent", "KEYCODE_BACK")
-print("Share and Open delivered the exact exported JPEG bytes to an independent Android app.", flush=True)
+
+def convert_and_export():
+    tap("Convert")
+    tap("Choose image & convert", scroll=True)
+    choose_image()
+    wait_node("omniforge-fixture-converted.jpg")
+    wait_node("Preview of omniforge-fixture-converted.jpg", scroll=True)
+    print("Converted PNG to JPEG and loaded its saved image preview.", flush=True)
+    # Scroll the action fully into view. Accessibility bounds can include clipped
+    # children near the navigation bar on the small emulator display.
+    swipe_up()
+    swipe_up()
+    tap("Export a copy", scroll=True)
+    # ACTION_OPEN_DOCUMENT_TREE opens internal storage directly on this AVD.
+    tap("Download", scroll=True)
+    tap("OmniForgeQA")
+    tap("Use this folder")
+    tap("Allow")
+    wait_node("Copy saved to the selected folder.", scroll=True)
+    with tempfile.TemporaryDirectory() as directory:
+        exported = Path(directory) / "converted.jpg"
+        adb("pull", "/sdcard/Download/OmniForgeQA/omniforge-fixture-converted.jpg", str(exported))
+        jpeg = exported.read_bytes()
+        assert jpeg[:3] == b"\xff\xd8\xff" and jpeg[-2:] == b"\xff\xd9", "Export is not a complete JPEG"
+    print("Converted PNG to JPEG, rendered the saved output, and exported JPEG bytes.", flush=True)
+    return hashlib.sha256(jpeg).hexdigest()
 
 
-tap("PDF Studio")
-tap("Choose image & create PDF", scroll=True)
-choose_image()
-wait_node("omniforge-fixture.pdf")
-wait_node("PDF preview, page 1", scroll=True)
-wait_node("Page 1 of 1", scroll=True)
-print("Converted PNG to PDF and rendered its first page.", flush=True)
+def share_and_open(checksum):
+    tap("Files")
+    tap("View omniforge-fixture-converted.jpg", scroll=True)
+    wait_node("omniforge-fixture-converted.jpg")
+    reset_result_scroll()
+    swipe_up()
+    tap("Share file", scroll=True)
+    verify_receiver("Share", checksum)
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    tap("Open with another app", scroll=True)
+    verify_receiver("Open", checksum)
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    print("Share and Open delivered the exact exported JPEG bytes to an independent Android app.", flush=True)
 
-tap("PDF Studio")
-tap("Import existing PDF", scroll=True)
-choose_download("omniforge-two-pages.pdf")
-wait_node("omniforge-two-pages.pdf")
-wait_node("PDF preview, page 1", scroll=True)
-wait_node("Page 1 of 2", scroll=True)
-swipe_up()
-swipe_up()
-tap("Next page", scroll=True)
-wait_node("Page 2 of 2", scroll=True)
-wait_node("PDF preview, page 2")
-swipe_up()
-swipe_up()
-tap("Zoom in", scroll=True)
-wait_node("Fit to width", scroll=True)
-tap("Fit to width", scroll=True)
-wait_node("Zoom in", scroll=True)
-tap("Previous page", scroll=True)
-wait_node("Page 1 of 2", scroll=True)
-print("Opened a two-page PDF, navigated both pages, and changed zoom.", flush=True)
-swipe_up()
-swipe_up()
-tap("Read page text", scroll=True)
-wait_node("Name: 1234", scroll=True)
-print("Read the original text layer from the PDF fixture.", flush=True)
+
+def pdf_scenarios():
+    tap("PDF Studio")
+    tap("Choose image & create PDF", scroll=True)
+    choose_image()
+    wait_node("omniforge-fixture.pdf")
+    wait_node("PDF preview, page 1", scroll=True)
+    wait_node("Page 1 of 1", scroll=True)
+    print("Converted PNG to PDF and rendered its first page.", flush=True)
+
+    tap("PDF Studio")
+    tap("Import existing PDF", scroll=True)
+    choose_download("omniforge-two-pages.pdf")
+    wait_node("omniforge-two-pages.pdf")
+    wait_node("PDF preview, page 1", scroll=True)
+    wait_node("Page 1 of 2", scroll=True)
+    swipe_up()
+    swipe_up()
+    tap("Next page", scroll=True)
+    wait_node("Page 2 of 2", scroll=True)
+    wait_node("PDF preview, page 2")
+    swipe_up()
+    swipe_up()
+    tap("Zoom in", scroll=True)
+    wait_node("Fit to width", scroll=True)
+    tap("Fit to width", scroll=True)
+    wait_node("Zoom in", scroll=True)
+    tap("Previous page", scroll=True)
+    wait_node("Page 1 of 2", scroll=True)
+    print("Opened a two-page PDF, navigated both pages, and changed zoom.", flush=True)
+    swipe_up()
+    swipe_up()
+    tap("Read page text", scroll=True)
+    wait_node("Name: 1234", scroll=True)
+    print("Read the original text layer from the PDF fixture.", flush=True)
+
+
+def run_scenario(name, scenario, *args):
+    try:
+        adb("shell", "am", "force-stop", "com.omniforge.app")
+        adb("shell", "am", "start", "-W", "-n", "com.omniforge.app/.MainActivity")
+        wait_node("YOUR OFFLINE WORKSPACE")
+        return scenario(*args), True
+    except (AssertionError, subprocess.CalledProcessError, ET.ParseError):
+        print(f"Scenario failed: {name}", flush=True)
+        traceback.print_exc()
+        return None, False
+
+
+if __name__ == "__main__":
+    fixture()
+    multipage_fixture()
+    checksum, conversion_ok = run_scenario("conversion and export", convert_and_export)
+    handoff_ok = False
+    if conversion_ok:
+        _, handoff_ok = run_scenario("Share and Open", share_and_open, checksum)
+    _, pdf_ok = run_scenario("PDF creation, import and viewing", pdf_scenarios)
+    if not (conversion_ok and handoff_ok and pdf_ok):
+        raise SystemExit(1)
