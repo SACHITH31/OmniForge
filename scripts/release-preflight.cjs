@@ -1,9 +1,15 @@
 const { expo } = require('../app.json');
+const manifest = require('../package.json');
+const lock = require('../package-lock.json');
 
 const tag = process.argv[2];
 const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?$/;
 if (!versionPattern.test(expo.version) || tag !== `v${expo.version}`) {
   throw new Error('The release tag must match the Expo version and use semantic versioning.');
+}
+
+if ([manifest.version, lock.version, lock.packages['']?.version].some(version => version !== expo.version)) {
+  throw new Error('Expo, npm package, and root lockfile versions must match.');
 }
 
 if (expo.android?.package !== 'com.omniforge.app') {
