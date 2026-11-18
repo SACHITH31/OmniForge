@@ -1,3 +1,4 @@
+import { renderPdfPage } from './androidOutput';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -98,6 +99,34 @@ export async function imageToPdf(asset: DocumentPicker.DocumentPickerAsset): Pro
   const uri = `${ROOT}${id}-${name}`;
   await FileSystem.copyAsync({ from: printed.uri, to: uri });
   return saveRecord({ id, name, uri, mimeType: 'application/pdf', bytes: await fileSize(uri), createdAt: new Date().toISOString(), kind: 'pdf' });
+}
+
+export async function savePdfPageAsJpeg(file: StoredFile, pageIndex: number): Promise<StoredFile> {
+  if (file.mimeType !== 'application/pdf' || !Number.isSafeInteger(pageIndex) || pageIndex < 0) {
+    throw new Error('Choose a valid PDF page.');
+  }
+
+  const rendered = await renderPdfPage(file, pageIndex, 1800);
+  const marker = 'data:image/jpeg;base64,';
+  if (!rendered.uri.startsWith(marker)) throw new Error('The page renderer did not return a JPEG.');
+  const encoded = rendered.uri.slice(marker.length);
+  if (!encoded.startsWith('/9j/')) throw new Error('The rendered JPEG is invalid.');
+
+  await ensureRoot();
+  const id = newId();
+  const name = `${safeFileName(file.name)}-page-${pageIndex + 1}.jpg`;
+  const uri = `${ROOT}${id}-${name}`;
+  const temporary = `${uri}.part`;
+  try {
+    await FileSystem.writeAsStringAsync(temporary, encoded, { encoding: FileSystem.EncodingType.Base64 });
+    const bytes = await fileSize(temporary);
+    if (bytes < 4) throw new Error('The rendered JPEG could not be saved.');
+    await FileSystem.moveAsync({ from: temporary, to: uri });
+    return await saveRecord({ id, name, uri, mimeType: 'image/jpeg', bytes, createdAt: new Date().toISOString(), kind: 'convert' });
+  } catch (error) {
+    await Promise.allSettled([temporary, uri].map(path => FileSystem.deleteAsync(path, { idempotent: true })));
+    throw error;
+  }
 }
 
 export async function shareFile(file: StoredFile): Promise<void> {

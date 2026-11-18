@@ -5,9 +5,15 @@
     "scheme": "omniforge",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "android": { "package": "com.omniforge.app", "edgeToEdgeEnabled": true },
-    "plugins": ["expo-document-picker"]
+    "android": {
+      "package": "com.omniforge.app",
+      "edgeToEdgeEnabled": true,
+      "versionCode": 1
+    },
+    "plugins": [
+      "expo-document-picker"
+    ]
   }
 }
