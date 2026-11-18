@@ -4,7 +4,13 @@ import type { StoredFile } from './types';
 
 export type PdfPage = { uri: string; width: number; height: number; pageCount: number };
 
+export type PdfTextBlock = {
+  text: string;
+  bounds: [left: number, top: number, right: number, bottom: number][];
+};
+
 type OutputModule = {
+  readPdfText(source: string, index: number): Promise<PdfTextBlock[]>;
   renderPdfPage(source: string, index: number, maxSide: number): Promise<PdfPage>;
   open(uri: string, mimeType: string): Promise<void>;
   copyToDocument(source: string, destination: string): Promise<void>;
@@ -46,4 +52,8 @@ export async function exportOutput(file: StoredFile): Promise<boolean> {
 
 export function renderPdfPage(file: StoredFile, index: number, maxSide: number): Promise<PdfPage> {
   return androidOutput().renderPdfPage(file.uri, index, maxSide);
+}
+
+export async function readPdfText(file: StoredFile, index: number): Promise<PdfTextBlock[]> {
+  return androidOutput().readPdfText(file.uri, index);
 }

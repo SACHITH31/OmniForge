@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, BackHandler, Image, Pressable, ScrollView, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, BackHandler, Image, Platform, Pressable, ScrollView, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, saveSettings, shareFile } from './src/core/files';
-import { exportOutput, openOutput, renderPdfPage, type PdfPage } from './src/core/androidOutput';
+import { exportOutput, openOutput, renderPdfPage, readPdfText, type PdfPage } from './src/core/androidOutput';
 import { themes, useWorkspaceTheme, WorkspaceTheme } from './src/ui/theme';
 import { AppSettings, DEFAULT_SETTINGS, formatBytes, OutputFormat, StoredFile } from './src/core/types';
 
@@ -220,6 +220,7 @@ function PdfPreview({ file }: { file: StoredFile }) {
   const { C, styles } = useWorkspaceTheme();
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(false);
+  const [showText, setShowText] = useState(false);
   const [page, setPage] = useState<PdfPage | null>(null);
   const [error, setError] = useState('');
   const [viewport, setViewport] = useState(0);
@@ -254,8 +255,32 @@ function PdfPreview({ file }: { file: StoredFile }) {
           <Action label="Next page" onPress={() => setIndex(index + 1)} disabled={index + 1 === page.pageCount} secondary />
         </>}
         <Action label={zoom ? 'Fit to width' : 'Zoom in'} onPress={() => setZoom(!zoom)} secondary />
+        {Platform.OS === 'android' && Number(Platform.Version) >= 35 &&
+          <Action label={showText ? 'Hide page text' : 'Read page text'} onPress={() => setShowText(!showText)} secondary />}
+        {showText && <PdfPageText key={index} file={file} index={index} />}
       </View>
     </>}
+  </View>;
+}
+
+function PdfPageText({ file, index }: { file: StoredFile; index: number }) {
+  const { styles, C } = useWorkspaceTheme();
+  const [state, setState] = useState<{ text: string; error?: string } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    readPdfText(file, index).then(
+      blocks => { if (active) setState({ text: blocks.map(block => block.text).join('\n') }); },
+      error => { if (active) setState({ text: '', error: error instanceof Error ? error.message : 'Could not read text on this PDF page.' }); },
+    );
+    return () => { active = false; };
+  }, [file, index]);
+
+  return <View accessibilityLiveRegion="polite" style={{ padding: 12, borderRadius: 12, backgroundColor: C.raised }}>
+    {!state ? <ActivityIndicator accessibilityLabel="Reading PDF text" color={C.mint} /> :
+      <Text selectable={!!state.text} style={[styles.panelCopy, { marginBottom: 0 }]}>
+        {state.error || state.text || 'No selectable text on this page. Scanned images need OCR.'}
+      </Text>}
   </View>;
 }
 

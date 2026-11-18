@@ -96,11 +96,12 @@ def multipage_fixture():
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Contents 5 0 R >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 7 0 R >> >> /Contents 5 0 R >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Contents 6 0 R >>",
     ]
-    for commands in [b"0 0 1 rg 10 10 100 100 re f", b"1 0 0 rg 20 20 100 100 re f"]:
+    for commands in [b"0 0 1 rg 10 10 100 100 re f 0 g BT /F1 12 Tf 30 340 Td (Name: 1234) Tj ET", b"1 0 0 rg 20 20 100 100 re f"]:
         objects.append(b"<< /Length %d >>\nstream\n" % len(commands) + commands + b"\nendstream")
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
     pdf = bytearray(b"%PDF-1.4\n")
     offsets = []
     for index, obj in enumerate(objects, 1):
@@ -196,3 +197,8 @@ wait_node("Zoom in", scroll=True)
 tap("Previous page", scroll=True)
 wait_node("Page 1 of 2", scroll=True)
 print("Opened a two-page PDF, navigated both pages, and changed zoom.", flush=True)
+swipe_up()
+swipe_up()
+tap("Read page text", scroll=True)
+wait_node("Name: 1234", scroll=True)
+print("Read the original text layer from the PDF fixture.", flush=True)

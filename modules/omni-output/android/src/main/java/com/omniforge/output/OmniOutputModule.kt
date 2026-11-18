@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Base64
 import expo.modules.kotlin.modules.Module
@@ -49,15 +50,7 @@ class OmniOutputModule : Module() {
     }
     AsyncFunction("renderPdfPage") { source: String, index: Int, maxSide: Int ->
       require(maxSide in 320..1800)
-      val descriptor = ParcelFileDescriptor.open(savedFile(source), ParcelFileDescriptor.MODE_READ_ONLY)
-      val renderer = try {
-        PdfRenderer(descriptor)
-      } catch (error: Exception) {
-        descriptor.close()
-        throw IOException("This PDF is damaged, password protected, or unsupported.", error)
-      }
-
-      renderer.use { document ->
+      openPdf(source).use { document ->
         require(index in 0 until document.pageCount) { "This PDF has no page at that position." }
         document.openPage(index).use { page ->
           val scale = maxSide.toDouble() / maxOf(page.width, page.height)
@@ -80,6 +73,35 @@ class OmniOutputModule : Module() {
           }
         }
       }
+    }
+    AsyncFunction("readPdfText") { source: String, index: Int ->
+      if (Build.VERSION.SDK_INT < 35) {
+        throw UnsupportedOperationException("Reading PDF text requires Android 15 or later.")
+      }
+      openPdf(source).use { document ->
+        require(index in 0 until document.pageCount) { "This PDF has no page at that position." }
+        document.openPage(index).use { page ->
+          val contents = page.textContents
+          require(contents.sumOf { it.text.length } <= 250_000 && contents.sumOf { it.bounds.size } <= 25_000) {
+            "This page contains too much text to display at once."
+          }
+          contents.map { block ->
+            mapOf("text" to block.text, "bounds" to block.bounds.map { rect ->
+              listOf(rect.left.toDouble(), rect.top.toDouble(), rect.right.toDouble(), rect.bottom.toDouble())
+            })
+          }
+        }
+      }
+    }
+  }
+
+  private fun openPdf(source: String): PdfRenderer {
+    val descriptor = ParcelFileDescriptor.open(savedFile(source), ParcelFileDescriptor.MODE_READ_ONLY)
+    try {
+      return PdfRenderer(descriptor)
+    } catch (error: Exception) {
+      descriptor.close()
+      throw IOException("This PDF is damaged, password protected, or unsupported.", error)
     }
   }
 
