@@ -263,6 +263,15 @@ def pdf_scenarios():
     wait_node("PDF preview, page 1")
     print("Rendered the two-page thumbnail grid and opened page one from it.", flush=True)
 
+    tap("Save page as JPEG", scroll=True)
+    reset_result_scroll()
+    wait_node("omniforge-two-pages-page-1.jpg")
+    wait_node("Preview of omniforge-two-pages-page-1.jpg")
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    reset_result_scroll()
+    wait_node("omniforge-two-pages.pdf")
+    print("Saved the selected PDF page as a separate JPEG and returned to the source PDF.", flush=True)
+
 
 def run_scenario(name, scenario, *args):
     try:
