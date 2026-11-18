@@ -1,4 +1,4 @@
-import { convertImage, imageToPdf, loadFiles, saveEditedPdf, savePdfPageImage } from '../src/core/files';
+import { convertImage, imageToPdf, loadFiles, saveEditedPdf, savePdfPageImage, toggleFavorite } from '../src/core/files';
 
 jest.mock('../src/core/androidOutput', () => ({ writePdfPageImage: jest.fn() }));
 
@@ -96,4 +96,12 @@ test('saves only a native editor working copy and retains its source', async () 
   expect(result).toMatchObject({ name: 'Invoice-edited.pdf', mimeType: 'application/pdf' });
   expect(result.uri).not.toBe(pdf.uri);
   expect(await loadFiles()).toEqual([result]);
+});
+
+test('favorites a legacy record and preserves simultaneous toggles', async () => {
+  memory['omniforge.files.v1'] = JSON.stringify([pdf]);
+  expect((await toggleFavorite(pdf.id))[0].favorite).toBe(true);
+  await Promise.all([toggleFavorite(pdf.id), toggleFavorite(pdf.id)]);
+  expect(await loadFiles()).toEqual([{ ...pdf, favorite: true }]);
+  await expect(toggleFavorite('missing')).rejects.toThrow('no longer');
 });

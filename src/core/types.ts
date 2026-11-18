@@ -8,6 +8,7 @@ export interface StoredFile {
   mimeType: string;
   bytes: number;
   createdAt: string;
+  favorite?: boolean;
   kind: ToolKind;
 }
 

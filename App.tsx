@@ -3,8 +3,10 @@ import { ActivityIndicator, Alert, Animated, BackHandler, Image, Modal, Platform
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, savePdfPageImage, saveSettings, shareFile } from './src/core/files';
+import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, savePdfPageImage, saveSettings, shareFile, toggleFavorite } from './src/core/files';
 import { exportOutput, openOutput, renderPdfPage, readPdfText, type PdfPage } from './src/core/androidOutput';
+import { FileLibrary } from './src/ui/FileLibrary';
+import { FileRow } from './src/ui/FileRow';
 import { PdfThumbnails } from './src/ui/PdfThumbnails';
 import { PdfTextEditor } from './src/ui/PdfTextEditor';
 import { supportsPdfTextEditing } from './src/core/androidOutput';
@@ -39,16 +41,6 @@ function Action({ label, icon, onPress, secondary, disabled }: { label: string; 
   </Pressable>;
 }
 
-function FileRow({ file, onShare, onOpen }: { file: StoredFile; onShare: () => void; onOpen: () => void }) {
-  const { C, styles } = useWorkspaceTheme();
-  const icon: IconName = file.mimeType === 'application/pdf' ? 'document-text-outline' : 'image-outline';
-  return <View style={styles.fileRow}>
-    <View style={[styles.fileIcon, { backgroundColor: file.mimeType === 'application/pdf' ? `${C.purple}1E` : `${C.mint}1E` }]}><Ionicons name={icon} size={22} color={file.mimeType === 'application/pdf' ? C.purple : C.mint} /></View>
-    <Pressable style={{ flex: 1, minWidth: 0, minHeight: 48, justifyContent: 'center' }} accessibilityRole="button" accessibilityLabel={`View ${file.name}`} onPress={onOpen}><Text numberOfLines={1} style={styles.fileName}>{file.name}</Text><Text style={styles.fileMeta}>{formatBytes(file.bytes)} · {new Date(file.createdAt).toLocaleDateString()}</Text></Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel={`Share ${file.name}`} onPress={onShare} hitSlop={10} style={styles.shareButton}><Ionicons name="share-outline" size={21} color={C.mint} /></Pressable>
-  </View>;
-}
-
 export default function App() {
   const theme = themes[useColorScheme() === 'light' ? 'light' : 'dark'];
   return <SafeAreaProvider initialMetrics={initialWindowMetrics}>
@@ -61,14 +53,13 @@ function Workspace() {
   const [screen, setScreen] = useState<Screen>('Home');
   const [resultRoute, setResultRoute] = useState<ResultRoute | null>(null);
   const [files, setFiles] = useState<StoredFile[]>([]);
-  const [fileSearch, setFileSearch] = useState('');
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [busy, setBusy] = useState<string | null>(null);
   const [format, setFormat] = useState<OutputFormat>('jpeg');
   const { width } = useWindowDimensions();
   const fade = useRef(new Animated.Value(1)).current;
   const wide = width >= 680;
-  const visibleFiles = files.filter(file => file.name.toLowerCase().includes(fileSearch.trim().toLowerCase()));
+  const favorites = files.filter(file => file.favorite);
 
   const refresh = useCallback(async () => setFiles(await loadFiles()), []);
   useEffect(() => { refresh().catch(() => {}); loadSettings().then(setSettings).catch(() => {}); }, [refresh]);
@@ -143,6 +134,11 @@ function Workspace() {
           <ToolCard icon="document-text-outline" title="Open PDF Studio" description="Import or create PDFs" tone={C.purple} onPress={() => navigate('PDF Studio')} />
           <ToolCard icon="images-outline" title="Compress image" description="Choose JPEG quality" tone={C.blue} onPress={() => navigate('Image Tools')} />
         </View>
+        {favorites.length > 0 && <>
+          <Section title="Favorites" subtitle="Pinned to your workspace" />
+          {favorites.slice(0, 3).map(file => <FileRow key={file.id} file={file}
+            onOpen={() => setResultRoute({ file, from: screen })} onShare={() => shareFile(file).catch(showError)} />)}
+        </>}
         <Section title="Recent files" subtitle={files.length
           ? `${files.length} in library · ${formatBytes(files.reduce((total, file) => total + (file.bytes || 0), 0))}`
           : 'Your saved outputs will appear here'} />
@@ -155,7 +151,8 @@ function Workspace() {
       {screen === 'Convert' && <><ScreenHeading kicker="CONVERT FILES" title="Change the format." subtitle="Choose a JPEG or PNG image and make a new copy in your preferred format." /><Panel><Text style={styles.fieldLabel}>OUTPUT FORMAT</Text><View style={styles.segment}>{(['jpeg', 'png'] as const).map(value => <Pressable accessibilityRole="radio" accessibilityState={{ checked: format === value }} key={value} onPress={() => setFormat(value)} style={[styles.segmentItem, format === value && styles.segmentActive]}><Text style={[styles.segmentText, format === value && { color: C.onAccent }]}>{value.toUpperCase()}</Text></Pressable>)}</View><Text style={styles.hint}>JPEG uses your saved quality setting. PNG is lossless. Animated images and other document types are not supported.</Text><Action label="Choose image & convert" icon="folder-open-outline" onPress={() => imageTask('convert')} disabled={!!busy} /></Panel><Action label="Image compression" icon="images-outline" onPress={() => navigate('Image Tools')} secondary /></>}
       {screen === 'PDF Studio' && <><ScreenHeading kicker="PDF STUDIO" title="A page from a picture." subtitle="Create a shareable PDF from one JPEG or PNG image, or import an existing PDF into your local library." /><Panel><View style={styles.featureIcon}><Ionicons name="document-text-outline" color={C.purple} size={30} /></View><Text style={styles.panelTitle}>Image to PDF</Text><Text style={styles.panelCopy}>Your image is fitted to a PDF page on your device.</Text><Action label="Choose image & create PDF" icon="add-outline" onPress={() => imageTask('pdf')} disabled={!!busy} /><View style={{ height: 10 }} /><Action label="Import existing PDF" icon="download-outline" secondary onPress={() => run('Importing PDF', importPdf)} disabled={!!busy} /></Panel><Text style={styles.hint}>Open a saved PDF to browse or export its pages. On devices with Android PDF text-object support, you can preview edits to supported text runs.</Text></>}
       {screen === 'Image Tools' && <><ScreenHeading kicker="IMAGE TOOLS" title="Keep the detail. Lose the weight." subtitle="Compress a JPEG or PNG into a smaller JPEG copy. Compare the size when it finishes." /><Panel><Text style={styles.fieldLabel}>JPEG QUALITY · {Math.round(settings.jpegQuality * 100)}%</Text><View style={styles.qualityRow}>{[0.45, 0.72, 0.9].map((value, index) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: settings.jpegQuality === value }} onPress={() => updateQuality(value)} style={[styles.qualityOption, settings.jpegQuality === value && styles.qualitySelected]}><Text style={[styles.qualityText, settings.jpegQuality === value && { color: C.onAccent }]}>{['Small', 'Balanced', 'High'][index]}</Text></Pressable>)}</View><Text style={styles.hint}>Photos with large flat areas may not become smaller. PNG transparency becomes an opaque JPEG.</Text><Action label="Choose image & compress" icon="contract-outline" onPress={() => imageTask('compress')} disabled={!!busy} /></Panel></>}
-      {screen === 'Recent' && <><ScreenHeading kicker="YOUR FILES" title="Made here. Kept here." subtitle="Search your locally saved outputs and imported PDFs." /><View style={styles.searchBox}><Ionicons name="search-outline" size={20} color={C.muted} /><TextInput accessibilityLabel="Search saved files" placeholder="Search files" placeholderTextColor={C.muted} value={fileSearch} onChangeText={setFileSearch} autoCorrect={false} style={styles.searchInput} /></View>{visibleFiles.length ? visibleFiles.map(file => <FileRow key={file.id} file={file} onOpen={() => setResultRoute({ file, from: screen })} onShare={() => shareFile(file).catch(showError)} />) : <Empty text={files.length ? 'No files match your search.' : 'No files yet. Create one from the toolkit.'} />}</>}
+      {screen === 'Recent' && <FileLibrary files={files} onOpen={file => setResultRoute({ file, from: 'Recent' })}
+        onShare={file => shareFile(file).catch(showError)} onFavorite={file => toggleFavorite(file.id).then(setFiles).catch(showError)} />}
       {screen === 'Settings' && <><ScreenHeading kicker="SETTINGS" title="Your space, your rules." subtitle="OmniForge processes files on this device and stores outputs locally." /><Panel><Text style={styles.panelTitle}>Default JPEG quality</Text><Text style={styles.panelCopy}>Used for image conversion and compression.</Text><View style={styles.qualityRow}>{[0.45, 0.72, 0.9].map((value, index) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: settings.jpegQuality === value }} onPress={() => updateQuality(value)} style={[styles.qualityOption, settings.jpegQuality === value && styles.qualitySelected]}><Text style={[styles.qualityText, settings.jpegQuality === value && { color: C.onAccent }]}>{['45%', '72%', '90%'][index]}</Text></Pressable>)}</View></Panel><Panel><Text style={styles.panelTitle}>Local library</Text><Text style={styles.panelCopy}>{files.length} saved files. Clearing removes the app's stored copies and history.</Text><Action label="Clear saved files" icon="trash-outline" secondary onPress={() => Alert.alert('Clear saved files?', 'This deletes OmniForge copies from this device.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => { clearFiles().then(refresh).catch(showError); } }])} /></Panel><Text style={styles.version}>OmniForge 0.1.0 · Offline first</Text></>}
       </>}
     </ScrollView></Animated.View>

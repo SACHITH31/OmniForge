@@ -49,6 +49,16 @@ async function saveRecord(record: StoredFile): Promise<StoredFile> {
   return record;
 }
 
+export async function toggleFavorite(id: string): Promise<StoredFile[]> {
+  return writeLibrary(async () => {
+    const previous = await loadFiles();
+    if (!previous.some(file => file.id === id)) throw new Error('This file is no longer in the library.');
+    const next = previous.map(file => file.id === id ? { ...file, favorite: !file.favorite } : file);
+    await AsyncStorage.setItem(FILES_KEY, JSON.stringify(next));
+    return next;
+  });
+}
+
 export async function loadSettings(): Promise<AppSettings> {
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
