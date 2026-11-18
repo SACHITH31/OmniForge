@@ -135,14 +135,14 @@ def multipage_fixture():
             "-d", "file:///sdcard/Download/omniforge-two-pages.pdf")
 
 
-def verify_receiver(action, checksum):
-    expected = f"QA received {action} {checksum}"
+def verify_receiver(action, receipt):
+    expected = f"QA received {action} {receipt}"
     for _ in range(8):
         nodes = hierarchy()
         if any(node.get("text") == expected for node in nodes):
             return
         if any("QA receiver error" in node.get("text", "") for node in nodes):
-            raise AssertionError("Receiving application could not read the granted JPEG URI")
+            raise AssertionError("Receiving application rejected the saved file")
         if any(node.get("text", "").casefold() == "just once" and node.get("enabled") == "true" for node in nodes):
             tap("Just once")
         else:
@@ -267,6 +267,12 @@ def pdf_scenarios():
     reset_result_scroll()
     wait_node("omniforge-two-pages.pdf")
     print("Saved the selected PDF page as a separate JPEG and returned to the source PDF.", flush=True)
+    tap("Save page as PNG", scroll=True)
+    wait_node("Preview of omniforge-two-pages-page-1.png", scroll=True)
+    tap("Open with another app", scroll=True)
+    verify_receiver("Open", "PNG 1350x1800 blue rectangle on white")
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    print("Decoded the exported PNG in an independent app and verified page dimensions and fixture colors.", flush=True)
 
 
 def run_scenario(name, scenario, *args):

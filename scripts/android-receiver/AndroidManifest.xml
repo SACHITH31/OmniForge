@@ -11,6 +11,7 @@
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
         <data android:mimeType="image/jpeg" />
+        <data android:mimeType="image/png" />
       </intent-filter>
     </activity>
   </application>
