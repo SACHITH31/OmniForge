@@ -1,0 +1,28 @@
+name: Android release candidate
+on:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify annotated release tag and source
+        shell: bash
+        run: |
+          test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag
+          test "$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor HEAD origin/main
+          node scripts/release-preflight.cjs "$GITHUB_REF_NAME"
+  validate:
+    needs: preflight
+    uses: ./.github/workflows/validate.yml
