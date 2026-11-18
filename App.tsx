@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Animated, BackHandler, Image, Modal, Platform
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, saveSettings, shareFile } from './src/core/files';
+import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, savePdfPageAsJpeg, saveSettings, shareFile } from './src/core/files';
 import { exportOutput, openOutput, renderPdfPage, readPdfText, type PdfPage } from './src/core/androidOutput';
 import { PdfThumbnails } from './src/ui/PdfThumbnails';
 import { PdfSearch } from './src/ui/PdfSearch';
@@ -11,7 +11,7 @@ import { themes, useWorkspaceTheme, WorkspaceTheme } from './src/ui/theme';
 import { AppSettings, DEFAULT_SETTINGS, formatBytes, OutputFormat, StoredFile } from './src/core/types';
 
 type Screen = 'Home' | 'Convert' | 'PDF Studio' | 'Image Tools' | 'Recent' | 'Settings';
-type ResultRoute = { file: StoredFile; from: Screen };
+type ResultRoute = { file: StoredFile; from: Screen; previous?: StoredFile };
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const tabs: { name: Screen; icon: IconName }[] = [
@@ -73,7 +73,7 @@ function Workspace() {
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (resultRoute) {
-        setResultRoute(null);
+        setResultRoute(resultRoute.previous ? { file: resultRoute.previous, from: resultRoute.from } : null);
         setScreen(resultRoute.from);
         return true;
       }
@@ -117,7 +117,12 @@ function Workspace() {
   return <SafeAreaView style={styles.root}><StatusBar style={mode === 'light' ? 'dark' : 'light'} />
     <View style={styles.topbar}><View style={styles.brandMark}><Ionicons name="sparkles" size={19} color={C.onAccent} /></View><Text style={styles.brand}>OMNI<Text style={{ color: C.mint }}>FORGE</Text></Text><View style={{ flex: 1 }} /><Pressable accessibilityRole="button" accessibilityLabel="Settings" onPress={() => navigate('Settings')}><Ionicons name="options-outline" size={23} color={C.muted} /></Pressable></View>
     <Animated.View style={{ flex: 1, opacity: fade }}><ScrollView contentContainerStyle={[styles.content, { maxWidth: wide ? 760 : 600 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-      {resultRoute ? <FileResult key={resultRoute.file.id} file={resultRoute.file} onBack={() => navigate(resultRoute.from)} /> : <>
+      {resultRoute ? <FileResult key={resultRoute.file.id} file={resultRoute.file}
+        onBack={() => resultRoute.previous ? setResultRoute({ file: resultRoute.previous, from: resultRoute.from }) : navigate(resultRoute.from)}
+        onGenerated={file => {
+          setResultRoute({ file, from: resultRoute.from, previous: resultRoute.file });
+          refresh().catch(showError);
+        }} /> : <>
       {screen === 'Home' && <>
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>YOUR OFFLINE WORKSPACE</Text>
@@ -155,9 +160,10 @@ function Workspace() {
   </SafeAreaView>;
 }
 
-function FileResult({ file, onBack }: {
+function FileResult({ file, onBack, onGenerated }: {
   file: StoredFile;
   onBack: () => void;
+  onGenerated: (file: StoredFile) => void;
 }) {
   const { C, styles } = useWorkspaceTheme();
   const [preview, setPreview] = useState<'loading' | 'ready' | 'failed'>('loading');
@@ -199,7 +205,7 @@ function FileResult({ file, onBack }: {
       <View accessibilityLiveRegion="polite">
         {isImage && preview === 'loading' && <ActivityIndicator accessibilityLabel="Loading image preview" color={C.mint} />}
         {isImage && preview === 'failed' && <Text style={styles.hint}>The saved image could not be displayed.</Text>}
-        {file.mimeType === 'application/pdf' && <PdfPreview file={file} />}
+        {file.mimeType === 'application/pdf' && <PdfPreview file={file} onGenerated={onGenerated} />}
         {!isImage && file.mimeType !== 'application/pdf' && <Text style={styles.hint}>Preview is unavailable for this format.</Text>}
       </View>
       <View accessibilityLiveRegion="polite">
@@ -218,7 +224,7 @@ function FileResult({ file, onBack }: {
   </>;
 }
 
-function PdfPreview({ file }: { file: StoredFile }) {
+function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (file: StoredFile) => void }) {
   const { C, styles } = useWorkspaceTheme();
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(false);
@@ -227,6 +233,26 @@ function PdfPreview({ file }: { file: StoredFile }) {
   const [thumbnailsOpen, setThumbnailsOpen] = useState(false);
   const [jump, setJump] = useState<string | null>(null);
   const [jumpError, setJumpError] = useState('');
+  const [savingPage, setSavingPage] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const saveInFlight = useRef(false);
+
+  async function savePage() {
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
+    setSavingPage(true);
+    setSaveError('');
+    try {
+      const output = await savePdfPageAsJpeg(file, index);
+      setSavingPage(false);
+      onGenerated(output);
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'The PDF page could not be saved.');
+      setSavingPage(false);
+    } finally {
+      saveInFlight.current = false;
+    }
+  }
   const [page, setPage] = useState<PdfPage | null>(null);
   const [error, setError] = useState('');
   const [viewport, setViewport] = useState(0);
@@ -281,6 +307,8 @@ function PdfPreview({ file }: { file: StoredFile }) {
           <Action label={showText ? 'Hide page text' : 'Read page text'} onPress={() => setShowText(!showText)} secondary />}
         {Platform.OS === 'android' && Number(Platform.Version) >= 35 &&
           <Action label="Find in PDF" onPress={() => setSearchOpen(true)} secondary />}
+        <Action label={savingPage ? 'Saving page' : 'Save page as JPEG'} onPress={savePage} disabled={savingPage} secondary />
+        {!!saveError && <Text accessibilityRole="alert" style={{ color: C.danger }}>{saveError}</Text>}
         {showText && <PdfPageText key={index} file={file} index={index} />}
       </View>
     </>}
