@@ -154,10 +154,10 @@ function Workspace() {
 }
 
 function FileResult({ file, onBack }: {
-  const { C, styles } = useWorkspaceTheme();
   file: StoredFile;
   onBack: () => void;
 }) {
+  const { C, styles } = useWorkspaceTheme();
   const [preview, setPreview] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [pending, setPending] = useState<'share' | 'export' | 'open' | null>(null);
   const [status, setStatus] = useState('');
