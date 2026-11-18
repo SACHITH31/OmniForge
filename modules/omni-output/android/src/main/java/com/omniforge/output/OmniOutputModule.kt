@@ -61,13 +61,14 @@ class OmniOutputModule : Module() {
       cache.listFiles()?.filter { it.isFile && it.lastModified() < System.currentTimeMillis() - 86_400_000L }?.forEach { it.delete() }
       val temporary = File.createTempFile("edit-", ".pdf", cache)
       try {
-        openPdf(source).use { document ->
+        val expected = openPdf(source).use { document ->
           PdfTextEditing.replace(document, index, id, original, replacement, temporary)
         }
         ParcelFileDescriptor.open(temporary, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
           PdfRenderer(descriptor).use { edited ->
+            check(edited.pageCount == expected.pageCount) { "The edited PDF changed the page count." }
             edited.openPage(index).use { page ->
-              PdfTextEditing.verify(page, replacement)
+              PdfTextEditing.verify(page, replacement, expected)
               renderPage(page, 1200) + ("documentUri" to Uri.fromFile(temporary).toString())
             }
           }
