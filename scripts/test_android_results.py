@@ -29,7 +29,12 @@ def wait_node(label, *, scroll=False):
             time.sleep(1)
             continue
         for node in last:
-            if label in (node.get("text"), node.get("content-desc"), node.get("resource-id")):
+            description = node.get("content-desc", "").casefold()
+            target = label.casefold()
+            if target in (node.get("text", "").casefold(), description, node.get("resource-id", "").casefold()):
+                return node
+            # DocumentsUI grid tiles append file size and date to the accessible name.
+            if description.startswith(target + ", "):
                 return node
         if scroll and attempt in (1, 3):
             swipe_up()
