@@ -139,8 +139,20 @@ def verify_receiver(action, checksum):
             raise AssertionError("Receiving application could not read the granted JPEG URI")
         if any(node.get("text", "").casefold() == "just once" and node.get("enabled") == "true" for node in nodes):
             tap("Just once")
-        elif any(node.get("text") == "OmniForge QA Receiver" for node in nodes):
-            tap("OmniForge QA Receiver")
+        else:
+            receiver = next((node for node in nodes
+                             if node.get("text") == "OmniForge QA Receiver"), None)
+            if receiver is not None:
+                size = adb("shell", "wm", "size").decode().splitlines()[-1]
+                width, height = map(int, re.search(r"(\d+)x(\d+)", size).groups())
+                _, top, _, bottom = bounds(receiver)
+                if bottom > height - 48:
+                    # The compact chooser can place the label behind Android's Home area.
+                    y = min(top - 40, height - 80)
+                    adb("shell", "input", "swipe", str(width // 2), str(y),
+                        str(width // 2), str(height // 3), "450")
+                else:
+                    tap("OmniForge QA Receiver")
         time.sleep(0.5)
     wait_node(expected)
 
