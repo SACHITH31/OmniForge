@@ -128,3 +128,31 @@ jobs:
             adb shell uiautomator dump /sdcard/window.xml
             adb shell cat /sdcard/window.xml | grep -F 'YOUR OFFLINE WORKSPACE'
             python3 scripts/test_android_results.py
+
+  android-pdf-edit:
+    needs: android-apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: CRBA
+      - name: Prepare independent PDF validation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y poppler-utils
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Edit a real PDF on Android and verify the exported copy
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          system-image-api-level: 36-ext18
+          target: google_apis
+          arch: x86_64
+          script: |
+            adb install CRBA.apk
+            python3 scripts/test_android_pdf_edit.py
