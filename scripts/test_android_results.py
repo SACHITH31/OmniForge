@@ -22,7 +22,7 @@ def hierarchy():
     return list(ET.fromstring(adb("shell", "cat", "/sdcard/omni-test.xml")).iter("node"))
 
 
-def wait_node(label, *, scroll=False, prefer_text=False):
+def wait_node(label, *, scroll=False, prefer_text=False, for_tap=False):
     last = []
     for attempt in range(8):
         try:
@@ -31,6 +31,10 @@ def wait_node(label, *, scroll=False, prefer_text=False):
             time.sleep(1)
             continue
         for node in last:
+            if for_tap:
+                left, top, right, bottom = bounds(node)
+                if right - left < 8 or bottom - top < 16 or node.get("enabled") == "false":
+                    continue
             description = node.get("content-desc", "").casefold()
             target = label.casefold()
             if target == node.get("text", "").casefold():
@@ -57,7 +61,7 @@ def bounds(node):
     return tuple(map(int, re.findall(r"\d+", node.get("bounds", ""))))
 
 def tap(label, *, scroll=False, prefer_text=False):
-    node = wait_node(label, scroll=scroll, prefer_text=prefer_text)
+    node = wait_node(label, scroll=scroll, prefer_text=prefer_text, for_tap=True)
     left, top, right, bottom = bounds(node)
     print(f"Tap {label!r} in {node.get('package')} at {(left, top, right, bottom)}", flush=True)
     adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
@@ -224,8 +228,9 @@ def pdf_scenarios():
     swipe_up()
     swipe_up()
     tap("Next page", scroll=True)
-    wait_node("Page 2 of 2", scroll=True)
+    reset_result_scroll()
     wait_node("PDF preview, page 2")
+    wait_node("Page 2 of 2", scroll=True)
     swipe_up()
     swipe_up()
     tap("Zoom in", scroll=True)
