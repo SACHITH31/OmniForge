@@ -1,6 +1,7 @@
 """Exercise real Android picker, conversion, and result screens on a clean AVD."""
 
 import binascii
+import hashlib
 import re
 import struct
 import subprocess
@@ -141,6 +142,31 @@ with tempfile.TemporaryDirectory() as directory:
     jpeg = exported.read_bytes()
     assert jpeg[:3] == b"\xff\xd8\xff" and jpeg[-2:] == b"\xff\xd9", "Export is not a complete JPEG"
 print("Converted PNG to JPEG, rendered the saved output, and exported JPEG bytes.", flush=True)
+
+def verify_receiver(action, checksum):
+    expected = f"QA received {action} {checksum}"
+    for _ in range(8):
+        nodes = hierarchy()
+        if any(node.get("text") == expected for node in nodes):
+            return
+        if any("QA receiver error" in node.get("text", "") for node in nodes):
+            raise AssertionError("Receiving application could not read the granted JPEG URI")
+        if any(node.get("text") == "OmniForge QA Receiver" for node in nodes):
+            tap("OmniForge QA Receiver")
+        if any(node.get("text", "").casefold() == "just once" for node in nodes):
+            tap("Just once")
+        time.sleep(0.5)
+    wait_node(expected)
+
+checksum = hashlib.sha256(jpeg).hexdigest()
+tap("Share file", scroll=True)
+verify_receiver("Share", checksum)
+adb("shell", "input", "keyevent", "KEYCODE_BACK")
+tap("Open with another app", scroll=True)
+verify_receiver("Open", checksum)
+adb("shell", "input", "keyevent", "KEYCODE_BACK")
+print("Share and Open delivered the exact exported JPEG bytes to an independent Android app.", flush=True)
+
 
 tap("PDF Studio")
 tap("Choose image & create PDF", scroll=True)
