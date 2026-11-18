@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, BackHandler, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, saveSettings, shareFile } from './src/core/files';
@@ -53,6 +53,14 @@ export default function App() {
 
   const refresh = useCallback(async () => setFiles(await loadFiles()), []);
   useEffect(() => { refresh().catch(() => {}); loadSettings().then(setSettings).catch(() => {}); }, [refresh]);
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (screen === 'Home') return false;
+      setScreen('Home');
+      return true;
+    });
+    return () => subscription.remove();
+  }, [screen]);
   const navigate = (next: Screen) => {
     fade.setValue(0);
     setScreen(next);
