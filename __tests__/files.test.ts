@@ -82,3 +82,10 @@ test('cleans up partial JPEG output when storage fails and leaves the source int
   expect(fs.deleteAsync).not.toHaveBeenCalledWith(pdf.uri, expect.anything());
   expect(await loadFiles()).toEqual([]);
 });
+
+test('keeps earlier library entries when concurrent conversions take the index beyond 100', async () => {
+  const earlier = Array.from({ length: 100 }, (_, n) => ({ ...pdf, id: String(n) }));
+  memory['omniforge.files.v1'] = JSON.stringify(earlier);
+  const [one, two] = await Promise.all([convertImage(asset, 'png', 1), convertImage(asset, 'jpeg', 0.72)]);
+  expect(await loadFiles()).toEqual([two, one, ...earlier]);
+});
