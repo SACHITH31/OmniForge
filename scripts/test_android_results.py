@@ -93,6 +93,11 @@ tap("Choose image & convert", scroll=True)
 choose_image()
 wait_node("omniforge-fixture-converted.jpg")
 wait_node("Preview of omniforge-fixture-converted.jpg", scroll=True)
+print("Converted PNG to JPEG and loaded its saved image preview.", flush=True)
+# Scroll the action fully into view. Accessibility bounds can include clipped
+# children near the navigation bar on the small emulator display.
+swipe_up()
+swipe_up()
 tap("Export a copy", scroll=True)
 tap("Show roots")
 tap("Downloads")
