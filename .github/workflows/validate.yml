@@ -65,6 +65,24 @@ jobs:
           grep -F "versionCode='$version_code'" apk-manifest.txt
           git rev-parse HEAD > source-commit.txt
           sha256sum CRBA.apk > SHA256SUMS.txt
+      - name: Verify candidate signing with an ephemeral test key
+        shell: bash
+        run: |
+          key="$RUNNER_TEMP/omniforge-qa-signing.p12"
+          keytool -genkeypair -storetype PKCS12 -keystore "$key" -alias omniforge-release \
+            -keyalg RSA -keysize 2048 -validity 2 -dname CN=OmniForgeCandidateQA -storepass ci-only-password
+          export ANDROID_RELEASE_KEYSTORE_B64="$(base64 -w0 "$key")"
+          export ANDROID_RELEASE_STORE_PASSWORD=ci-only-password
+          ANDROID_RELEASE_CERT_SHA256="$(keytool -exportcert -keystore "$key" \
+            -alias omniforge-release -storepass ci-only-password | sha256sum | cut -d' ' -f1)"
+          export ANDROID_RELEASE_CERT_SHA256
+          bash scripts/sign-android-apk.sh CRBA.apk "$RUNNER_TEMP/qa-resigned.apk"
+          if ANDROID_RELEASE_CERT_SHA256="$(printf '0%.0s' {1..64})" \
+            bash scripts/sign-android-apk.sh CRBA.apk "$RUNNER_TEMP/qa-mismatch.apk"; then
+            echo 'Signing must reject a mismatched fingerprint.' >&2
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/qa-mismatch.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: CRBA
