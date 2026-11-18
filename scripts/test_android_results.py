@@ -79,15 +79,45 @@ def fixture():
         adb("push", str(path), "/sdcard/Download/omniforge-fixture.png")
 
 
-def choose_image():
+def choose_download(name):
     tap("Show roots")
     tap("Downloads")
     if any(node.get("content-desc") == "List view" for node in hierarchy()):
         tap("List view")
-    tap("omniforge-fixture.png", prefer_text=True)
+    tap(name, prefer_text=True)
+
+
+def choose_image():
+    choose_download("omniforge-fixture.png")
+
+def multipage_fixture():
+    # Each page has a different size and filled rectangle to expose page mixups.
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Contents 5 0 R >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Contents 6 0 R >>",
+    ]
+    for commands in [b"0 0 1 rg 10 10 100 100 re f", b"1 0 0 rg 20 20 100 100 re f"]:
+        objects.append(b"<< /Length %d >>\nstream\n" % len(commands) + commands + b"\nendstream")
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for index, obj in enumerate(objects, 1):
+        offsets.append(len(pdf))
+        pdf.extend(b"%d 0 obj\n" % index + obj + b"\nendobj\n")
+    xref = len(pdf)
+    pdf.extend(b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1))
+    for offset in offsets:
+        pdf.extend(b"%010d 00000 n \n" % offset)
+    pdf.extend(b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, xref))
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "omniforge-two-pages.pdf"
+        path.write_bytes(pdf)
+        adb("push", str(path), "/sdcard/Download/omniforge-two-pages.pdf")
 
 
 fixture()
+multipage_fixture()
 tap("Convert")
 tap("Choose image & convert", scroll=True)
 choose_image()
@@ -119,3 +149,24 @@ wait_node("omniforge-fixture.pdf")
 wait_node("PDF preview, page 1", scroll=True)
 wait_node("Page 1 of 1", scroll=True)
 print("Converted PNG to PDF and rendered its first page.", flush=True)
+
+tap("PDF Studio")
+tap("Import existing PDF", scroll=True)
+choose_download("omniforge-two-pages.pdf")
+wait_node("omniforge-two-pages.pdf")
+wait_node("PDF preview, page 1", scroll=True)
+wait_node("Page 1 of 2", scroll=True)
+swipe_up()
+swipe_up()
+tap("Next page", scroll=True)
+wait_node("Page 2 of 2", scroll=True)
+wait_node("PDF preview, page 2")
+swipe_up()
+swipe_up()
+tap("Zoom in", scroll=True)
+wait_node("Fit to width", scroll=True)
+tap("Fit to width", scroll=True)
+wait_node("Zoom in", scroll=True)
+tap("Previous page", scroll=True)
+wait_node("Page 1 of 2", scroll=True)
+print("Opened a two-page PDF, navigated both pages, and changed zoom.", flush=True)
