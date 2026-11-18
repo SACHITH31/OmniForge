@@ -46,7 +46,9 @@ def wait_node(label, *, scroll=False, prefer_text=False, for_tap=False):
             # DocumentsUI grid tiles append file size and date to the accessible name.
             if description.startswith(target + ", "):
                 return node
-        if scroll and attempt in (1, 3):
+        if scroll and attempt == 1:
+            reset_result_scroll()
+        elif scroll and 2 <= attempt < 7:
             swipe_up()
         time.sleep(0.5)
     crash_log = adb("logcat", "-d", "-t", "120", "AndroidRuntime:E", "ReactNativeJS:E", "*:S")
@@ -225,14 +227,10 @@ def pdf_scenarios():
     wait_node("omniforge-two-pages.pdf")
     wait_node("PDF preview, page 1", scroll=True)
     wait_node("Page 1 of 2", scroll=True)
-    swipe_up()
-    swipe_up()
     tap("Next page", scroll=True)
     reset_result_scroll()
     wait_node("PDF preview, page 2")
     wait_node("Page 2 of 2", scroll=True)
-    swipe_up()
-    swipe_up()
     tap("Zoom in", scroll=True)
     wait_node("Fit to width", scroll=True)
     tap("Fit to width", scroll=True)
@@ -240,8 +238,6 @@ def pdf_scenarios():
     tap("Previous page", scroll=True)
     wait_node("Page 1 of 2", scroll=True)
     print("Opened a two-page PDF, navigated both pages, and changed zoom.", flush=True)
-    swipe_up()
-    swipe_up()
     tap("Read page text", scroll=True)
     wait_node("Name: 1234", scroll=True)
     print("Read the original text layer from the PDF fixture.", flush=True)
