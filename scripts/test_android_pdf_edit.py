@@ -5,7 +5,8 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from test_android_results import adb, choose_download, multipage_fixture, reset_result_scroll, tap, wait_node
+from test_android_results import adb, choose_download, hierarchy, multipage_fixture, reset_result_scroll, tap, wait_node
+import time
 
 
 def text_layout(path, expected):
@@ -52,6 +53,22 @@ def main():
     tap("Import existing PDF", scroll=True)
     choose_download("omniforge-two-pages.pdf")
     tap("Edit existing text", scroll=True)
+    tap("Edit Name: 1234")
+    # A replacement wider than the page must be rejected before any copy can be saved.
+    tap("Replacement text")
+    adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")
+    adb("shell", "input", "text", "W" * 65)
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    tap("Preview replacement", scroll=True)
+    for _ in range(12):
+        nodes = hierarchy()
+        if any(node.get("content-desc", "").startswith("Edit unavailable.") for node in nodes):
+            assert all(node.get("text") != "Save edited copy" for node in nodes)
+            break
+        time.sleep(0.5)
+    else:
+        raise AssertionError("An overflowing replacement must report an error before offering Save")
+    tap("Choose another line", scroll=True)
     tap("Edit Name: 1234")
     tap("Replacement text")
     adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")

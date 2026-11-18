@@ -102,7 +102,7 @@ export function PdfTextEditor({ file, index, onClose, onSaved }: {
           </Pressable>
         </>}
         {busy && <ActivityIndicator accessibilityLabel="Preparing edited PDF" color={C.mint} />}
-        {!!error && <Text accessibilityRole="alert" style={{ color: C.danger }}>{error}</Text>}
+        {!!error && <Text accessibilityRole="alert" accessibilityLabel={'Edit unavailable. ' + error} style={{ color: C.danger }}>{error}</Text>}
         <Pressable accessibilityRole="button" disabled={busy} onPress={onClose} style={[styles.action, styles.actionSecondary]}>
           <Text style={[styles.actionText, { color: C.text }]}>Close editor</Text>
         </Pressable>
