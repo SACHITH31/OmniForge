@@ -16,6 +16,15 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      - name: Check release metadata contract
+        shell: bash
+        run: |
+          tag="v$(node -p "require('./app.json').expo.version")"
+          node scripts/release-preflight.cjs "$tag"
+          if node scripts/release-preflight.cjs "v999.999.999"; then
+            echo "Expected a mismatched tag to fail" >&2
+            exit 1
+          fi
       - run: npm run typecheck
       - run: npm test -- --watch=false
       - run: npx expo export --platform android
@@ -52,7 +61,8 @@ jobs:
           grep -F "package: name='com.omniforge.app'" apk-manifest.txt
           version="$(node -p "require('./app.json').expo.version")"
           grep -F "versionName='$version'" apk-manifest.txt
-          grep -E "versionCode='[1-9][0-9]*'" apk-manifest.txt
+          version_code="$(node -p "require('./app.json').expo.android.versionCode")"
+          grep -F "versionCode='$version_code'" apk-manifest.txt
           git rev-parse HEAD > source-commit.txt
           sha256sum CRBA.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
