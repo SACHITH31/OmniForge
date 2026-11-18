@@ -74,6 +74,20 @@ class OmniOutputModule : Module() {
         }
       }
     }
+    AsyncFunction("searchPdfPages") { source: String, query: String, first: Int, count: Int ->
+      if (Build.VERSION.SDK_INT < 35) {
+        throw UnsupportedOperationException("PDF search requires Android 15 or later.")
+      }
+      require(query.isNotBlank() && query.length <= 120 && first >= 0 && count in 1..16)
+      openPdf(source).use { document ->
+        val end = minOf(document.pageCount.toLong(), first.toLong() + count).toInt()
+        (first until end).mapNotNull { index ->
+          val matches = document.openPage(index).use { page -> page.searchText(query).size }
+          if (matches == 0) null else mapOf("pageIndex" to index, "count" to matches)
+        }
+      }
+    }
+
     AsyncFunction("readPdfText") { source: String, index: Int ->
       if (Build.VERSION.SDK_INT < 35) {
         throw UnsupportedOperationException("Reading PDF text requires Android 15 or later.")

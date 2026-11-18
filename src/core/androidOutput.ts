@@ -9,7 +9,10 @@ export type PdfTextBlock = {
   bounds: [left: number, top: number, right: number, bottom: number][];
 };
 
+export type PdfSearchHit = { pageIndex: number; count: number };
+
 type OutputModule = {
+  searchPdfPages(source: string, query: string, first: number, count: number): Promise<PdfSearchHit[]>;
   readPdfText(source: string, index: number): Promise<PdfTextBlock[]>;
   renderPdfPage(source: string, index: number, maxSide: number): Promise<PdfPage>;
   open(uri: string, mimeType: string): Promise<void>;
@@ -56,4 +59,8 @@ export function renderPdfPage(file: StoredFile, index: number, maxSide: number):
 
 export async function readPdfText(file: StoredFile, index: number): Promise<PdfTextBlock[]> {
   return androidOutput().readPdfText(file.uri, index);
+}
+
+export async function searchPdfPages(file: StoredFile, query: string, first: number, count: number): Promise<PdfSearchHit[]> {
+  return androidOutput().searchPdfPages(file.uri, query, first, count);
 }

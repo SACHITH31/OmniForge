@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, saveSettings, shareFile } from './src/core/files';
 import { exportOutput, openOutput, renderPdfPage, readPdfText, type PdfPage } from './src/core/androidOutput';
+import { PdfSearch } from './src/ui/PdfSearch';
 import { themes, useWorkspaceTheme, WorkspaceTheme } from './src/ui/theme';
 import { AppSettings, DEFAULT_SETTINGS, formatBytes, OutputFormat, StoredFile } from './src/core/types';
 
@@ -221,6 +222,7 @@ function PdfPreview({ file }: { file: StoredFile }) {
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(false);
   const [showText, setShowText] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [jump, setJump] = useState<string | null>(null);
   const [jumpError, setJumpError] = useState('');
   const [page, setPage] = useState<PdfPage | null>(null);
@@ -274,9 +276,16 @@ function PdfPreview({ file }: { file: StoredFile }) {
         <Action label={zoom ? 'Fit to width' : 'Zoom in'} onPress={() => setZoom(!zoom)} secondary />
         {Platform.OS === 'android' && Number(Platform.Version) >= 35 &&
           <Action label={showText ? 'Hide page text' : 'Read page text'} onPress={() => setShowText(!showText)} secondary />}
+        {Platform.OS === 'android' && Number(Platform.Version) >= 35 &&
+          <Action label="Find in PDF" onPress={() => setSearchOpen(true)} secondary />}
         {showText && <PdfPageText key={index} file={file} index={index} />}
       </View>
     </>}
+    {searchOpen && page && <PdfSearch file={file} pageCount={page.pageCount}
+      onClose={() => setSearchOpen(false)} onSelect={pageIndex => {
+        setSearchOpen(false);
+        setIndex(pageIndex);
+      }} />}
     <Modal visible={jump !== null} transparent animationType="fade" onRequestClose={() => setJump(null)}>
       <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#0008' }}>
         <View accessibilityViewIsModal style={[styles.panel, { width: '100%', maxWidth: 420, alignSelf: 'center', gap: 10 }]}>
