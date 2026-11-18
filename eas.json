@@ -1,0 +1,10 @@
+{
+  "build": {
+    "standalone": {
+      "developmentClient": false,
+      "android": {
+        "buildType": "apk"
+      }
+    }
+  }
+}
