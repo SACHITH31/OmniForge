@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Animated, BackHandler, Image, Pressable, Safe
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, saveSettings, shareFile } from './src/core/files';
-import { exportOutput, openOutput } from './src/core/androidOutput';
+import { exportOutput, openOutput, renderPdfPage, type PdfPage } from './src/core/androidOutput';
 import { AppSettings, DEFAULT_SETTINGS, formatBytes, OutputFormat, StoredFile } from './src/core/types';
 
 type Screen = 'Home' | 'Convert' | 'PDF Studio' | 'Image Tools' | 'Recent' | 'Settings';
@@ -166,7 +166,8 @@ function FileResult({ file, onBack }: {
       <View accessibilityLiveRegion="polite">
         {isImage && preview === 'loading' && <ActivityIndicator accessibilityLabel="Loading image preview" color={C.mint} />}
         {isImage && preview === 'failed' && <Text style={styles.hint}>The saved image could not be displayed.</Text>}
-        {!isImage && <Text style={styles.hint}>In-app preview is currently available for JPEG and PNG files.</Text>}
+        {file.mimeType === 'application/pdf' && <PdfPreview file={file} />}
+        {!isImage && file.mimeType !== 'application/pdf' && <Text style={styles.hint}>Preview is unavailable for this format.</Text>}
       </View>
       <View accessibilityLiveRegion="polite">
         {pending && <ActivityIndicator accessibilityLabel="Preparing file action" color={C.mint} />}
@@ -182,6 +183,48 @@ function FileResult({ file, onBack }: {
       <Action label="Back" icon="arrow-back-outline" onPress={onBack} secondary />
     </Panel>
   </>;
+}
+
+function PdfPreview({ file }: { file: StoredFile }) {
+  const [index, setIndex] = useState(0);
+  const [zoom, setZoom] = useState(false);
+  const [page, setPage] = useState<PdfPage | null>(null);
+  const [error, setError] = useState('');
+  const [viewport, setViewport] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setPage(null);
+    setError('');
+    Promise.resolve().then(() => renderPdfPage(file, index, zoom ? 1600 : 960)).then(
+      result => { if (active) setPage(result); },
+      () => { if (active) setError('This PDF page could not be rendered. It may be damaged, password protected, or unsupported.'); },
+    );
+    return () => { active = false; };
+  }, [file, index, zoom]);
+
+  const imageWidth = viewport * (zoom ? 1.65 : 1);
+  return <View style={{ marginBottom: 16 }} onLayout={event => setViewport(event.nativeEvent.layout.width)}>
+    {error ? <Text accessibilityRole="alert" style={styles.hint}>{error}</Text> : null}
+    {!page && !error && <ActivityIndicator accessibilityLabel="Rendering PDF page" color={C.mint} />}
+    {page && <>
+      <ScrollView horizontal>
+        <Image source={{ uri: page.uri }} resizeMode="contain"
+          accessibilityLabel={`PDF preview, page ${index + 1}`}
+          style={{ width: imageWidth, height: Math.min(imageWidth * page.height / page.width, 1000), backgroundColor: C.bg }} />
+      </ScrollView>
+      <Text accessibilityLiveRegion="polite" style={[styles.fileMeta, { marginVertical: 10 }]}>
+        Page {index + 1} of {page.pageCount}
+      </Text>
+      <View style={{ gap: 8 }}>
+        {page.pageCount > 1 && <>
+          <Action label="Previous page" onPress={() => setIndex(index - 1)} disabled={index === 0} secondary />
+          <Action label="Next page" onPress={() => setIndex(index + 1)} disabled={index + 1 === page.pageCount} secondary />
+        </>}
+        <Action label={zoom ? 'Fit to width' : 'Zoom in'} onPress={() => setZoom(!zoom)} secondary />
+      </View>
+    </>}
+  </View>;
 }
 
 function Section({ title, subtitle }: { title: string; subtitle: string }) { return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text><Text style={styles.sectionSub}>{subtitle}</Text></View>; }

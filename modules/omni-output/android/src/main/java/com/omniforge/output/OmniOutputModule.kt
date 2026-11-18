@@ -2,12 +2,19 @@ package com.omniforge.output
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.util.Base64
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.functions.Queues
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import kotlin.math.roundToInt
 
 class OmniOutputModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -30,11 +37,7 @@ class OmniOutputModule : Module() {
 
     AsyncFunction("copyToDocument") { source: String, destination: String ->
       val context = requireNotNull(appContext.reactContext)
-      val input = Uri.parse(source)
-      require(input.scheme == "file")
-      val root = File(context.filesDir, "omniforge").canonicalFile
-      val file = File(requireNotNull(input.path)).canonicalFile
-      require(file.parentFile == root && file.isFile) { "The saved file is no longer available." }
+      val file = savedFile(source)
       val output = Uri.parse(destination)
       require(output.scheme == "content")
       file.inputStream().use { from ->
@@ -44,5 +47,49 @@ class OmniOutputModule : Module() {
       }
       Unit
     }
+    AsyncFunction("renderPdfPage") { source: String, index: Int, maxSide: Int ->
+      require(maxSide in 320..1800)
+      val descriptor = ParcelFileDescriptor.open(savedFile(source), ParcelFileDescriptor.MODE_READ_ONLY)
+      val renderer = try {
+        PdfRenderer(descriptor)
+      } catch (error: Exception) {
+        descriptor.close()
+        throw IOException("This PDF is damaged, password protected, or unsupported.", error)
+      }
+
+      renderer.use { document ->
+        require(index in 0 until document.pageCount) { "This PDF has no page at that position." }
+        document.openPage(index).use { page ->
+          val scale = maxSide.toDouble() / maxOf(page.width, page.height)
+          val width = (page.width * scale).roundToInt().coerceAtLeast(1)
+          val height = (page.height * scale).roundToInt().coerceAtLeast(1)
+          val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+          try {
+            bitmap.eraseColor(Color.WHITE)
+            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            val bytes = ByteArrayOutputStream()
+            check(bitmap.compress(Bitmap.CompressFormat.JPEG, 88, bytes))
+            mapOf(
+              "uri" to ("data:image/jpeg;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)),
+              "width" to width,
+              "height" to height,
+              "pageCount" to document.pageCount
+            )
+          } finally {
+            bitmap.recycle()
+          }
+        }
+      }
+    }
+  }
+
+  private fun savedFile(source: String): File {
+    val context = requireNotNull(appContext.reactContext)
+    val uri = Uri.parse(source)
+    require(uri.scheme == "file")
+    val root = File(context.filesDir, "omniforge").canonicalFile
+    val file = File(requireNotNull(uri.path)).canonicalFile
+    require(file.parentFile == root && file.isFile) { "The saved file is no longer available." }
+    return file
   }
 }

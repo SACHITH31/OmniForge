@@ -2,7 +2,10 @@ import { requireOptionalNativeModule } from 'expo';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { StoredFile } from './types';
 
+export type PdfPage = { uri: string; width: number; height: number; pageCount: number };
+
 type OutputModule = {
+  renderPdfPage(source: string, index: number, maxSide: number): Promise<PdfPage>;
   open(uri: string, mimeType: string): Promise<void>;
   copyToDocument(source: string, destination: string): Promise<void>;
 };
@@ -39,4 +42,8 @@ export async function exportOutput(file: StoredFile): Promise<boolean> {
     throw error;
   }
   return true;
+}
+
+export function renderPdfPage(file: StoredFile, index: number, maxSide: number): Promise<PdfPage> {
+  return androidOutput().renderPdfPage(file.uri, index, maxSide);
 }
