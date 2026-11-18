@@ -14,8 +14,8 @@ type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const tabs: { name: Screen; icon: IconName }[] = [
   { name: 'Home', icon: 'grid-outline' }, { name: 'Convert', icon: 'swap-horizontal-outline' },
-  { name: 'PDF Studio', icon: 'document-text-outline' }, { name: 'Image Tools', icon: 'images-outline' },
-  { name: 'Recent', icon: 'time-outline' }, { name: 'Settings', icon: 'settings-outline' },
+  { name: 'PDF Studio', icon: 'document-text-outline' },
+  { name: 'Recent', icon: 'folder-outline' }, { name: 'Settings', icon: 'settings-outline' },
 ];
 
 function ToolCard({ icon, title, description, tone, onPress, wide }: { icon: IconName; title: string; description: string; tone: string; onPress: () => void; wide?: boolean }) {
@@ -117,13 +117,31 @@ function Workspace() {
     <Animated.View style={{ flex: 1, opacity: fade }}><ScrollView contentContainerStyle={[styles.content, { maxWidth: wide ? 760 : 600 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       {resultRoute ? <FileResult key={resultRoute.file.id} file={resultRoute.file} onBack={() => navigate(resultRoute.from)} /> : <>
       {screen === 'Home' && <>
-        <View style={styles.hero}><View style={styles.eyebrowRow}><View style={styles.dot} /><Text style={styles.eyebrow}>YOUR OFFLINE WORKSPACE</Text></View><Text style={styles.heroTitle}>Make more of{ '\n' }every file<Text style={{ color: C.mint }}>.</Text></Text><Text style={styles.heroSub}>Convert, compress, and create on your device. Your files stay yours.</Text><Pressable accessibilityRole="button" onPress={() => navigate('Convert')} style={styles.heroCta}><Text style={styles.heroCtaText}>Start creating</Text><Ionicons name="arrow-forward" color={C.onAccent} size={18} /></Pressable><View style={styles.heroOrb} /></View>
-        <Section title="Your toolkit" subtitle="Pick a task and get it done" />
-        <View style={styles.cardGrid}><ToolCard icon="swap-horizontal-outline" title="Convert files" description="JPEG and PNG conversions" tone={C.mint} onPress={() => navigate('Convert')} /><ToolCard icon="document-text-outline" title="PDF studio" description="Create a PDF from an image" tone={C.purple} onPress={() => navigate('PDF Studio')} /><ToolCard icon="images-outline" title="Image tools" description="Compress photos for sharing" tone={C.blue} onPress={() => navigate('Image Tools')} /><ToolCard icon="time-outline" title="Recent files" description="Everything you made, in one place" tone={C.mint} onPress={() => navigate('Recent')} /></View>
-        <Section title="Latest files" subtitle={`${files.length} saved locally`} />
-        {files.length ? files.slice(0, 3).map(file => <FileRow key={file.id} file={file} onOpen={() => setResultRoute({ file, from: screen })} onShare={() => shareFile(file).catch(showError)} />) : <Empty text="Your finished files will appear here." />}
+        <View style={styles.hero}>
+          <Text style={styles.eyebrow}>YOUR OFFLINE WORKSPACE</Text>
+          <Text accessibilityRole="header" style={styles.heroTitle}>Document studio</Text>
+          <Text style={styles.heroSub}>Convert images, build PDFs, and manage your files on this device.</Text>
+          <Pressable accessibilityRole="button" onPress={() => navigate('Recent')} style={styles.heroCta}>
+            <Ionicons name="search-outline" color={C.onAccent} size={18} />
+            <Text style={styles.heroCtaText}>Search files</Text>
+          </Pressable>
+        </View>
+        <Section title="Quick actions" subtitle="Choose a tool to get started" />
+        <View style={styles.cardGrid}>
+          <ToolCard icon="swap-horizontal-outline" title="Convert image" description="JPEG and PNG" tone={C.mint} onPress={() => navigate('Convert')} />
+          <ToolCard icon="document-text-outline" title="Open PDF Studio" description="Import or create PDFs" tone={C.purple} onPress={() => navigate('PDF Studio')} />
+          <ToolCard icon="images-outline" title="Compress image" description="Choose JPEG quality" tone={C.blue} onPress={() => navigate('Image Tools')} />
+        </View>
+        <Section title="Recent files" subtitle={files.length
+          ? `${files.length} in library · ${formatBytes(files.reduce((total, file) => total + (file.bytes || 0), 0))}`
+          : 'Your saved outputs will appear here'} />
+        {files.length > 0 ? <>
+          {files.slice(0, 3).map(file => <FileRow key={file.id} file={file}
+            onOpen={() => setResultRoute({ file, from: screen })} onShare={() => shareFile(file).catch(showError)} />)}
+          <Action label="Browse all files" icon="folder-open-outline" secondary onPress={() => navigate('Recent')} />
+        </> : <Empty text="Create or import a file to build your local library." />}
       </>}
-      {screen === 'Convert' && <><ScreenHeading kicker="CONVERT FILES" title="Change the format." subtitle="Choose a JPEG or PNG image and make a new copy in your preferred format." /><Panel><Text style={styles.fieldLabel}>OUTPUT FORMAT</Text><View style={styles.segment}>{(['jpeg', 'png'] as const).map(value => <Pressable accessibilityRole="radio" accessibilityState={{ checked: format === value }} key={value} onPress={() => setFormat(value)} style={[styles.segmentItem, format === value && styles.segmentActive]}><Text style={[styles.segmentText, format === value && { color: C.onAccent }]}>{value.toUpperCase()}</Text></Pressable>)}</View><Text style={styles.hint}>JPEG uses your saved quality setting. PNG is lossless. Animated images and other document types are not supported.</Text><Action label="Choose image & convert" icon="folder-open-outline" onPress={() => imageTask('convert')} disabled={!!busy} /></Panel></>}
+      {screen === 'Convert' && <><ScreenHeading kicker="CONVERT FILES" title="Change the format." subtitle="Choose a JPEG or PNG image and make a new copy in your preferred format." /><Panel><Text style={styles.fieldLabel}>OUTPUT FORMAT</Text><View style={styles.segment}>{(['jpeg', 'png'] as const).map(value => <Pressable accessibilityRole="radio" accessibilityState={{ checked: format === value }} key={value} onPress={() => setFormat(value)} style={[styles.segmentItem, format === value && styles.segmentActive]}><Text style={[styles.segmentText, format === value && { color: C.onAccent }]}>{value.toUpperCase()}</Text></Pressable>)}</View><Text style={styles.hint}>JPEG uses your saved quality setting. PNG is lossless. Animated images and other document types are not supported.</Text><Action label="Choose image & convert" icon="folder-open-outline" onPress={() => imageTask('convert')} disabled={!!busy} /></Panel><Action label="Image compression" icon="images-outline" onPress={() => navigate('Image Tools')} secondary /></>}
       {screen === 'PDF Studio' && <><ScreenHeading kicker="PDF STUDIO" title="A page from a picture." subtitle="Create a shareable PDF from one JPEG or PNG image, or import an existing PDF into your local library." /><Panel><View style={styles.featureIcon}><Ionicons name="document-text-outline" color={C.purple} size={30} /></View><Text style={styles.panelTitle}>Image to PDF</Text><Text style={styles.panelCopy}>Your image is fitted to a PDF page on your device.</Text><Action label="Choose image & create PDF" icon="add-outline" onPress={() => imageTask('pdf')} disabled={!!busy} /><View style={{ height: 10 }} /><Action label="Import existing PDF" icon="download-outline" secondary onPress={() => run('Importing PDF', importPdf)} disabled={!!busy} /></Panel><Text style={styles.hint}>PDF text editing, page rearrangement, and font preservation are not included in this release.</Text></>}
       {screen === 'Image Tools' && <><ScreenHeading kicker="IMAGE TOOLS" title="Keep the detail. Lose the weight." subtitle="Compress a JPEG or PNG into a smaller JPEG copy. Compare the size when it finishes." /><Panel><Text style={styles.fieldLabel}>JPEG QUALITY · {Math.round(settings.jpegQuality * 100)}%</Text><View style={styles.qualityRow}>{[0.45, 0.72, 0.9].map((value, index) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: settings.jpegQuality === value }} onPress={() => updateQuality(value)} style={[styles.qualityOption, settings.jpegQuality === value && styles.qualitySelected]}><Text style={[styles.qualityText, settings.jpegQuality === value && { color: C.onAccent }]}>{['Small', 'Balanced', 'High'][index]}</Text></Pressable>)}</View><Text style={styles.hint}>Photos with large flat areas may not become smaller. PNG transparency becomes an opaque JPEG.</Text><Action label="Choose image & compress" icon="contract-outline" onPress={() => imageTask('compress')} disabled={!!busy} /></Panel></>}
       {screen === 'Recent' && <><ScreenHeading kicker="YOUR FILES" title="Made here. Kept here." subtitle="Search your locally saved outputs and imported PDFs." /><View style={styles.searchBox}><Ionicons name="search-outline" size={20} color={C.muted} /><TextInput accessibilityLabel="Search saved files" placeholder="Search files" placeholderTextColor={C.muted} value={fileSearch} onChangeText={setFileSearch} autoCorrect={false} style={styles.searchInput} /></View>{visibleFiles.length ? visibleFiles.map(file => <FileRow key={file.id} file={file} onOpen={() => setResultRoute({ file, from: screen })} onShare={() => shareFile(file).catch(showError)} />) : <Empty text={files.length ? 'No files match your search.' : 'No files yet. Create one from the toolkit.'} />}</>}
@@ -131,7 +149,7 @@ function Workspace() {
       </>}
     </ScrollView></Animated.View>
     {busy && <View accessibilityLiveRegion="polite" style={styles.busy}><ActivityIndicator color={C.mint} /><Text style={styles.busyText}>{busy}…</Text></View>}
-    <View style={styles.tabBar}>{tabs.map(tab => <Pressable key={tab.name} accessibilityRole="tab" accessibilityState={{ selected: screen === tab.name }} accessibilityLabel={tab.name} onPress={() => navigate(tab.name)} style={styles.tab}><Ionicons name={tab.icon} size={22} color={screen === tab.name ? C.mint : C.muted} /><Text numberOfLines={1} style={[styles.tabText, screen === tab.name && { color: C.mint }]}>{tab.name === 'PDF Studio' ? 'PDF' : tab.name === 'Image Tools' ? 'Images' : tab.name}</Text></Pressable>)}</View>
+    <View style={styles.tabBar}>{tabs.map(tab => <Pressable key={tab.name} accessibilityRole="tab" accessibilityState={{ selected: screen === tab.name }} accessibilityLabel={tab.name === 'Recent' ? 'Files' : tab.name} onPress={() => navigate(tab.name)} style={styles.tab}><Ionicons name={tab.icon} size={22} color={screen === tab.name ? C.mint : C.muted} /><Text numberOfLines={1} style={[styles.tabText, screen === tab.name && { color: C.mint }]}>{tab.name === 'PDF Studio' ? 'PDF' : tab.name === 'Recent' ? 'Files' : tab.name}</Text></Pressable>)}</View>
   </SafeAreaView>;
 }
 
@@ -243,10 +261,10 @@ function PdfPreview({ file }: { file: StoredFile }) {
 
 function Section({ title, subtitle }: { title: string; subtitle: string }) {
   const { styles } = useWorkspaceTheme();
-  return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text><Text style={styles.sectionSub}>{subtitle}</Text></View>; }
+  return <View style={styles.section}><Text accessibilityRole="header" style={styles.sectionTitle}>{title}</Text><Text style={styles.sectionSub}>{subtitle}</Text></View>; }
 function ScreenHeading({ kicker, title, subtitle }: { kicker: string; title: string; subtitle: string }) {
   const { styles } = useWorkspaceTheme();
-  return <View style={{ marginBottom: 28 }}><Text style={styles.kicker}>{kicker}</Text><Text style={styles.pageTitle}>{title}</Text><Text style={styles.pageSub}>{subtitle}</Text></View>; }
+  return <View style={{ marginBottom: 28 }}><Text style={styles.kicker}>{kicker}</Text><Text accessibilityRole="header" style={styles.pageTitle}>{title}</Text><Text style={styles.pageSub}>{subtitle}</Text></View>; }
 function Panel({ children }: { children: React.ReactNode }) {
   const { styles } = useWorkspaceTheme();
   return <View style={styles.panel}>{children}</View>; }
