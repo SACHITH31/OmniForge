@@ -48,6 +48,36 @@ class OmniOutputModule : Module() {
       }
       Unit
     }
+    Constant("supportsPdfTextEditing") { PdfTextEditing.available() }
+    AsyncFunction("inspectPdfRuns") { source: String, index: Int ->
+      check(PdfTextEditing.available()) { "Text object editing requires the Android PDF extension 18." }
+      openPdf(source).use { document -> document.openPage(index).use { PdfTextEditing.runs(it) } }
+    }
+
+    AsyncFunction("previewPdfEdit") { source: String, index: Int, id: Int, original: String, replacement: String ->
+      check(PdfTextEditing.available()) { "This Android version cannot edit PDF text objects." }
+      val cache = File(requireNotNull(appContext.reactContext).cacheDir, "pdf-edits")
+      check(cache.isDirectory || cache.mkdirs())
+      cache.listFiles()?.filter { it.isFile && it.lastModified() < System.currentTimeMillis() - 86_400_000L }?.forEach { it.delete() }
+      val temporary = File.createTempFile("edit-", ".pdf", cache)
+      try {
+        openPdf(source).use { document ->
+          PdfTextEditing.replace(document, index, id, original, replacement, temporary)
+        }
+        ParcelFileDescriptor.open(temporary, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+          PdfRenderer(descriptor).use { edited ->
+            edited.openPage(index).use { page ->
+              PdfTextEditing.verify(page, replacement)
+              renderPage(page, 1200) + ("documentUri" to Uri.fromFile(temporary).toString())
+            }
+          }
+        }
+      } catch (error: Throwable) {
+        temporary.delete()
+        throw error
+      }
+    }
+
     AsyncFunction("renderPdfPage") { source: String, index: Int, maxSide: Int ->
       require(maxSide in 320..1800)
       openPdf(source).use { document ->
