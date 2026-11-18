@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, BackHandler, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, BackHandler, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, saveSettings, shareFile } from './src/core/files';
@@ -42,6 +43,10 @@ function FileRow({ file, onShare, onOpen }: { file: StoredFile; onShare: () => v
 }
 
 export default function App() {
+  return <SafeAreaProvider initialMetrics={initialWindowMetrics}><Workspace /></SafeAreaProvider>;
+}
+
+function Workspace() {
   const [screen, setScreen] = useState<Screen>('Home');
   const [resultRoute, setResultRoute] = useState<ResultRoute | null>(null);
   const [files, setFiles] = useState<StoredFile[]>([]);
