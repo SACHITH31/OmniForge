@@ -1,4 +1,4 @@
-import { convertImage, imageToPdf, loadFiles, savePdfPageImage } from '../src/core/files';
+import { convertImage, imageToPdf, loadFiles, saveEditedPdf, savePdfPageImage } from '../src/core/files';
 
 jest.mock('../src/core/androidOutput', () => ({ writePdfPageImage: jest.fn() }));
 
@@ -9,6 +9,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn(async (key: string) => { delete memory[key]; }),
 }));
 jest.mock('expo-file-system/legacy', () => ({
+  cacheDirectory: 'file:///cache/',
   documentDirectory: 'file:///documents/',
   EncodingType: { Base64: 'base64' },
   makeDirectoryAsync: jest.fn(async () => {}),
@@ -87,4 +88,12 @@ test('keeps earlier library entries when concurrent conversions take the index b
   memory['omniforge.files.v1'] = JSON.stringify(earlier);
   const [one, two] = await Promise.all([convertImage(asset, 'png', 1), convertImage(asset, 'jpeg', 0.72)]);
   expect(await loadFiles()).toEqual([two, one, ...earlier]);
+});
+
+test('saves only a native editor working copy and retains its source', async () => {
+  await expect(saveEditedPdf(pdf, pdf.uri)).rejects.toThrow('preview');
+  const result = await saveEditedPdf(pdf, 'file:///cache/pdf-edits/edit-17.pdf');
+  expect(result).toMatchObject({ name: 'Invoice-edited.pdf', mimeType: 'application/pdf' });
+  expect(result.uri).not.toBe(pdf.uri);
+  expect(await loadFiles()).toEqual([result]);
 });

@@ -139,6 +139,31 @@ export async function savePdfPageImage(file: StoredFile, pageIndex: number, form
   });
 }
 
+export async function saveEditedPdf(source: StoredFile, workingUri: string): Promise<StoredFile> {
+  const prefix = FileSystem.cacheDirectory + 'pdf-edits/';
+  if (source.mimeType !== 'application/pdf' || !workingUri.startsWith(prefix) ||
+      !/^edit-[\w-]+\.pdf$/.test(workingUri.slice(prefix.length))) {
+    throw new Error('The edited preview is no longer available.');
+  }
+  return writeLibrary(async () => {
+    await ensureRoot();
+    const id = newId();
+    const name = `${safeFileName(source.name)}-edited.pdf`;
+    const uri = ROOT + id + '-' + name;
+    const temp = uri + '.part';
+    try {
+      await FileSystem.copyAsync({ from: workingUri, to: temp });
+      const bytes = await fileSize(temp);
+      if (!bytes) throw new Error('The edited PDF is empty.');
+      await FileSystem.moveAsync({ from: temp, to: uri });
+      return await saveRecord({ id, name, uri, bytes, mimeType: 'application/pdf', createdAt: new Date().toISOString(), kind: 'pdf' });
+    } catch (error) {
+      await Promise.allSettled([temp, uri].map(path => FileSystem.deleteAsync(path, { idempotent: true })));
+      throw error;
+    }
+  });
+}
+
 export async function shareFile(file: StoredFile): Promise<void> {
   const available = await Sharing.isAvailableAsync();
   if (!available) throw new Error('Sharing is unavailable on this device.');
