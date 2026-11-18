@@ -58,6 +58,29 @@ class OmniOutputModule : Module() {
       }
     }
 
+    AsyncFunction("savePdfPageImage") { source: String, index: Int, destination: String, format: String ->
+      val encoding = when (format) {
+        "jpeg" -> Bitmap.CompressFormat.JPEG
+        "png" -> Bitmap.CompressFormat.PNG
+        else -> throw IllegalArgumentException("Unsupported page image format.")
+      }
+      val input = savedFile(source)
+      val uri = Uri.parse(destination)
+      val output = File(requireNotNull(uri.path)).canonicalFile
+      require(uri.scheme == "file" && output.parentFile == input.parentFile && output.name.endsWith(".part"))
+      require(output.createNewFile()) { "The temporary output already exists." }
+      openPdf(source).use { document ->
+        document.openPage(index).use { page ->
+          withPageBitmap(page, 1800) { bitmap ->
+            output.outputStream().use { stream ->
+              check(bitmap.compress(encoding, 88, stream)) { "Could not encode the selected page." }
+            }
+          }
+        }
+      }
+      Unit
+    }
+
     AsyncFunction("renderPdfThumbnails") { source: String, first: Int, count: Int ->
       require(first >= 0 && count in 1..8)
       openPdf(source).use { document ->
@@ -106,6 +129,18 @@ class OmniOutputModule : Module() {
   }
 
   private fun renderPage(page: PdfRenderer.Page, maxSide: Int): Map<String, Any> {
+    return withPageBitmap(page, maxSide) { bitmap ->
+      val bytes = ByteArrayOutputStream()
+      check(bitmap.compress(Bitmap.CompressFormat.JPEG, 88, bytes))
+      mapOf(
+        "uri" to ("data:image/jpeg;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)),
+        "width" to bitmap.width,
+        "height" to bitmap.height
+      )
+    }
+  }
+
+  private fun <T> withPageBitmap(page: PdfRenderer.Page, maxSide: Int, use: (Bitmap) -> T): T {
     val scale = maxSide.toDouble() / maxOf(page.width, page.height).coerceAtLeast(1)
     val width = (page.width * scale).roundToInt().coerceAtLeast(1)
     val height = (page.height * scale).roundToInt().coerceAtLeast(1)
@@ -113,13 +148,7 @@ class OmniOutputModule : Module() {
     try {
       bitmap.eraseColor(Color.WHITE)
       page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-      val bytes = ByteArrayOutputStream()
-      check(bitmap.compress(Bitmap.CompressFormat.JPEG, 88, bytes))
-      return mapOf(
-        "uri" to ("data:image/jpeg;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)),
-        "width" to width,
-        "height" to height
-      )
+      return use(bitmap)
     } finally {
       bitmap.recycle()
     }

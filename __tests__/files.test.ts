@@ -1,6 +1,6 @@
-import { convertImage, imageToPdf, loadFiles, savePdfPageAsJpeg } from '../src/core/files';
+import { convertImage, imageToPdf, loadFiles, savePdfPageImage } from '../src/core/files';
 
-jest.mock('../src/core/androidOutput', () => ({ renderPdfPage: jest.fn() }));
+jest.mock('../src/core/androidOutput', () => ({ writePdfPageImage: jest.fn() }));
 
 const memory: Record<string, string> = {};
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -57,14 +57,13 @@ const pdf = {
   mimeType: 'application/pdf', bytes: 1024, createdAt: '2020-01-01', kind: 'import' as const,
 };
 
-test('writes the chosen PDF page as a separate JPEG and records it after moving it into place', async () => {
+test.each(['jpeg', 'png'] as const)('writes a separate %s page image before indexing it', async format => {
   const renderer = require('../src/core/androidOutput');
   const fs = require('expo-file-system/legacy');
-  renderer.renderPdfPage.mockResolvedValue({ uri: 'data:image/jpeg;base64,/9j/2Q==' });
-  const result = await savePdfPageAsJpeg(pdf, 1);
-  expect(renderer.renderPdfPage).toHaveBeenCalledWith(pdf, 1, 1800);
-  expect(result).toMatchObject({ name: 'Invoice-page-2.jpg', mimeType: 'image/jpeg' });
-  expect(fs.writeAsStringAsync).toHaveBeenCalledWith(`${result.uri}.part`, '/9j/2Q==', { encoding: 'base64' });
+  renderer.writePdfPageImage.mockResolvedValue(undefined);
+  const result = await savePdfPageImage(pdf, 1, format);
+  expect(renderer.writePdfPageImage).toHaveBeenCalledWith(pdf, 1, `${result.uri}.part`, format);
+  expect(result).toMatchObject({ name: `Invoice-page-2.${format === 'png' ? 'png' : 'jpg'}`, mimeType: `image/${format}` });
   expect(fs.moveAsync).toHaveBeenCalledWith({ from: `${result.uri}.part`, to: result.uri });
   expect(await loadFiles()).toEqual([result]);
   expect(fs.deleteAsync).not.toHaveBeenCalledWith(pdf.uri, expect.anything());
@@ -73,9 +72,9 @@ test('writes the chosen PDF page as a separate JPEG and records it after moving 
 test('cleans up partial JPEG output when storage fails and leaves the source intact', async () => {
   const renderer = require('../src/core/androidOutput');
   const fs = require('expo-file-system/legacy');
-  renderer.renderPdfPage.mockResolvedValue({ uri: 'data:image/jpeg;base64,/9j/2Q==' });
+  renderer.writePdfPageImage.mockResolvedValue(undefined);
   fs.moveAsync.mockRejectedValueOnce(new Error('Storage unavailable'));
-  await expect(savePdfPageAsJpeg(pdf, 0)).rejects.toThrow('Storage unavailable');
+  await expect(savePdfPageImage(pdf, 0, 'jpeg')).rejects.toThrow('Storage unavailable');
   const destination = fs.moveAsync.mock.calls[0][0].to;
   expect(fs.deleteAsync).toHaveBeenCalledWith(`${destination}.part`, { idempotent: true });
   expect(fs.deleteAsync).toHaveBeenCalledWith(destination, { idempotent: true });

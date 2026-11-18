@@ -14,6 +14,7 @@ export type PdfSearchHit = { pageIndex: number; count: number };
 export type PdfThumbnail = Omit<PdfPage, 'pageCount'> & { pageIndex: number };
 
 type OutputModule = {
+  savePdfPageImage(source: string, index: number, destination: string, format: 'jpeg' | 'png'): Promise<void>;
   renderPdfThumbnails(source: string, first: number, count: number): Promise<PdfThumbnail[]>;
   searchPdfPages(source: string, query: string, first: number, count: number): Promise<PdfSearchHit[]>;
   readPdfText(source: string, index: number): Promise<PdfTextBlock[]>;
@@ -70,4 +71,8 @@ export async function searchPdfPages(file: StoredFile, query: string, first: num
 
 export async function renderPdfThumbnails(file: StoredFile, first: number, count: number): Promise<PdfThumbnail[]> {
   return androidOutput().renderPdfThumbnails(file.uri, first, count);
+}
+
+export async function writePdfPageImage(file: StoredFile, index: number, destination: string, format: 'jpeg' | 'png') {
+  await androidOutput().savePdfPageImage(file.uri, index, destination, format);
 }

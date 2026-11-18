@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Animated, BackHandler, Image, Modal, Platform
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, savePdfPageAsJpeg, saveSettings, shareFile } from './src/core/files';
+import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, savePdfPageImage, saveSettings, shareFile } from './src/core/files';
 import { exportOutput, openOutput, renderPdfPage, readPdfText, type PdfPage } from './src/core/androidOutput';
 import { PdfThumbnails } from './src/ui/PdfThumbnails';
 import { PdfSearch } from './src/ui/PdfSearch';
@@ -239,13 +239,13 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
   const [saveError, setSaveError] = useState('');
   const saveInFlight = useRef(false);
 
-  async function savePage() {
+  async function savePage(format: OutputFormat) {
     if (saveInFlight.current) return;
     saveInFlight.current = true;
     setSavingPage(true);
     setSaveError('');
     try {
-      const output = await savePdfPageAsJpeg(file, index);
+      const output = await savePdfPageImage(file, index, format);
       setSavingPage(false);
       onGenerated(output);
     } catch (cause) {
@@ -309,7 +309,8 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
           <Action label={showText ? 'Hide page text' : 'Read page text'} onPress={() => setShowText(!showText)} secondary />}
         {Platform.OS === 'android' && Number(Platform.Version) >= 35 &&
           <Action label="Find in PDF" onPress={() => setSearchOpen(true)} secondary />}
-        <Action label={savingPage ? 'Saving page' : 'Save page as JPEG'} onPress={savePage} disabled={savingPage} secondary />
+        <Action label={savingPage ? 'Saving page' : 'Save page as JPEG'} onPress={() => savePage('jpeg')} disabled={savingPage} secondary />
+        <Action label="Save page as PNG" onPress={() => savePage('png')} disabled={savingPage} secondary />
         {!!saveError && <Text accessibilityRole="alert" style={{ color: C.danger }}>{saveError}</Text>}
         {showText && <PdfPageText key={index} file={file} index={index} />}
       </View>
