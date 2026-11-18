@@ -20,7 +20,7 @@ def hierarchy():
     return list(ET.fromstring(adb("shell", "cat", "/sdcard/omni-test.xml")).iter("node"))
 
 
-def wait_node(label, *, scroll=False):
+def wait_node(label, *, scroll=False, prefer_text=False):
     last = []
     for attempt in range(8):
         try:
@@ -31,7 +31,11 @@ def wait_node(label, *, scroll=False):
         for node in last:
             description = node.get("content-desc", "").casefold()
             target = label.casefold()
-            if target in (node.get("text", "").casefold(), description, node.get("resource-id", "").casefold()):
+            if target == node.get("text", "").casefold():
+                return node
+            if prefer_text:
+                continue
+            if target in (description, node.get("resource-id", "").casefold()):
                 return node
             # DocumentsUI grid tiles append file size and date to the accessible name.
             if description.startswith(target + ", "):
@@ -39,14 +43,16 @@ def wait_node(label, *, scroll=False):
         if scroll and attempt in (1, 3):
             swipe_up()
         time.sleep(0.5)
+    crash_log = adb("logcat", "-d", "-t", "120", "AndroidRuntime:E", "ReactNativeJS:E", "*:S")
+    print(crash_log.decode(errors="replace"), flush=True)
     raise AssertionError(f"Missing {label!r}. Visible labels: " + repr([
         (node.get("text"), node.get("content-desc")) for node in last
         if node.get("text") or node.get("content-desc")
     ]))
 
 
-def tap(label, *, scroll=False):
-    node = wait_node(label, scroll=scroll)
+def tap(label, *, scroll=False, prefer_text=False):
+    node = wait_node(label, scroll=scroll, prefer_text=prefer_text)
     left, top, right, bottom = map(int, re.findall(r"\d+", node.get("bounds", "")))
     adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
 
@@ -76,7 +82,9 @@ def fixture():
 def choose_image():
     tap("Show roots")
     tap("Downloads")
-    tap("omniforge-fixture.png")
+    if any(node.get("content-desc") == "List view" for node in hierarchy()):
+        tap("List view")
+    tap("omniforge-fixture.png", prefer_text=True)
 
 
 fixture()
