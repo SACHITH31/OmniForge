@@ -8,7 +8,8 @@ This file tracks notable changes to OmniForge. The format follows [Keep a Change
 
 - Convert JPEG and PNG images, adjust JPEG compression, and create PDFs from images on the device.
 - Import PDFs and manage recent local files with filename search.
-- Preview saved JPEG, PNG, and PDF outputs, navigate PDF pages, and zoom.
+- Preview saved JPEG, PNG, and PDF outputs. Navigate PDFs by page number or rendered thumbnail, and zoom in on the current page.
+- Select PDF text and search across pages on Android 15 or newer.
 - Share saved files, export copies to an Android document folder, and open them with compatible apps.
 - Follow the system light or dark appearance.
 
