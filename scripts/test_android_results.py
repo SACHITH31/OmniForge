@@ -52,9 +52,13 @@ def wait_node(label, *, scroll=False, prefer_text=False):
     ]))
 
 
+def bounds(node):
+    return tuple(map(int, re.findall(r"\d+", node.get("bounds", ""))))
+
 def tap(label, *, scroll=False, prefer_text=False):
     node = wait_node(label, scroll=scroll, prefer_text=prefer_text)
-    left, top, right, bottom = map(int, re.findall(r"\d+", node.get("bounds", "")))
+    left, top, right, bottom = bounds(node)
+    print(f"Tap {label!r} in {node.get('package')} at {(left, top, right, bottom)}", flush=True)
     adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
 
 
@@ -158,14 +162,23 @@ def verify_receiver(action, checksum):
             return
         if any("QA receiver error" in node.get("text", "") for node in nodes):
             raise AssertionError("Receiving application could not read the granted JPEG URI")
-        if any(node.get("text") == "OmniForge QA Receiver" for node in nodes):
-            tap("OmniForge QA Receiver")
-        if any(node.get("text", "").casefold() == "just once" for node in nodes):
+        if any(node.get("text", "").casefold() == "just once" and node.get("enabled") == "true" for node in nodes):
             tap("Just once")
+        elif any(node.get("text") == "OmniForge QA Receiver" for node in nodes):
+            tap("OmniForge QA Receiver")
         time.sleep(0.5)
     wait_node(expected)
 
+def reset_result_scroll():
+    size = adb("shell", "wm", "size").decode().splitlines()[-1]
+    width, height = map(int, re.search(r"(\d+)x(\d+)", size).groups())
+    for _ in range(2):
+        adb("shell", "input", "swipe", str(width // 2), str(height // 4),
+            str(width // 2), str(height * 3 // 5), "400")
+
 checksum = hashlib.sha256(jpeg).hexdigest()
+reset_result_scroll()
+swipe_up()
 tap("Share file", scroll=True)
 verify_receiver("Share", checksum)
 adb("shell", "input", "keyevent", "KEYCODE_BACK")
