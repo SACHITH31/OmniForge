@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Animated, BackHandler, Image, Pressable, Safe
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, saveSettings, shareFile } from './src/core/files';
+import { exportOutput, openOutput } from './src/core/androidOutput';
 import { AppSettings, DEFAULT_SETTINGS, formatBytes, OutputFormat, StoredFile } from './src/core/types';
 
 type Screen = 'Home' | 'Convert' | 'PDF Studio' | 'Image Tools' | 'Recent' | 'Settings';
@@ -102,7 +103,7 @@ export default function App() {
   return <SafeAreaView style={styles.root}><StatusBar style="light" backgroundColor={C.bg} />
     <View style={styles.topbar}><View style={styles.brandMark}><Ionicons name="sparkles" size={19} color={C.bg} /></View><Text style={styles.brand}>OMNI<Text style={{ color: C.mint }}>FORGE</Text></Text><View style={{ flex: 1 }} /><Pressable accessibilityRole="button" accessibilityLabel="Settings" onPress={() => navigate('Settings')}><Ionicons name="options-outline" size={23} color={C.muted} /></Pressable></View>
     <Animated.View style={{ flex: 1, opacity: fade }}><ScrollView contentContainerStyle={[styles.content, { maxWidth: wide ? 760 : 600 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-      {resultRoute ? <FileResult key={resultRoute.file.id} file={resultRoute.file} onBack={() => navigate(resultRoute.from)} onError={showError} /> : <>
+      {resultRoute ? <FileResult key={resultRoute.file.id} file={resultRoute.file} onBack={() => navigate(resultRoute.from)} /> : <>
       {screen === 'Home' && <>
         <View style={styles.hero}><View style={styles.eyebrowRow}><View style={styles.dot} /><Text style={styles.eyebrow}>YOUR OFFLINE WORKSPACE</Text></View><Text style={styles.heroTitle}>Make more of{ '\n' }every file<Text style={{ color: C.mint }}>.</Text></Text><Text style={styles.heroSub}>Convert, compress, and create on your device. Your files stay yours.</Text><Pressable accessibilityRole="button" onPress={() => navigate('Convert')} style={styles.heroCta}><Text style={styles.heroCtaText}>Start creating</Text><Ionicons name="arrow-forward" color={C.bg} size={18} /></Pressable><View style={styles.heroOrb} /></View>
         <Section title="Your toolkit" subtitle="Pick a task and get it done" />
@@ -122,22 +123,31 @@ export default function App() {
   </SafeAreaView>;
 }
 
-function FileResult({ file, onBack, onError }: {
+function FileResult({ file, onBack }: {
   file: StoredFile;
   onBack: () => void;
-  onError: (error: unknown) => void;
 }) {
   const [preview, setPreview] = useState<'loading' | 'ready' | 'failed'>('loading');
-  const [sharing, setSharing] = useState(false);
+  const [pending, setPending] = useState<'share' | 'export' | 'open' | null>(null);
+  const [status, setStatus] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const actionLock = useRef(false);
   const isImage = file.mimeType === 'image/jpeg' || file.mimeType === 'image/png';
-  async function share() {
-    setSharing(true);
+  async function perform(action: 'share' | 'export' | 'open') {
+    if (actionLock.current) return;
+    actionLock.current = true;
+    setPending(action);
+    setStatus('');
+    setErrorMessage('');
     try {
-      await shareFile(file);
+      if (action === 'share') await shareFile(file);
+      if (action === 'open') await openOutput(file);
+      if (action === 'export' && await exportOutput(file)) setStatus('Copy saved to the selected folder.');
     } catch (error) {
-      onError(error);
+      setErrorMessage(error instanceof Error ? error.message : 'Could not complete the file action.');
     } finally {
-      setSharing(false);
+      actionLock.current = false;
+      setPending(null);
     }
   }
 
@@ -158,7 +168,16 @@ function FileResult({ file, onBack, onError }: {
         {isImage && preview === 'failed' && <Text style={styles.hint}>The saved image could not be displayed.</Text>}
         {!isImage && <Text style={styles.hint}>In-app preview is currently available for JPEG and PNG files.</Text>}
       </View>
-      <Action label={sharing ? 'Opening share sheet' : 'Share file'} icon="share-outline" onPress={share} disabled={sharing} />
+      <View accessibilityLiveRegion="polite">
+        {pending && <ActivityIndicator accessibilityLabel="Preparing file action" color={C.mint} />}
+        {!!status && <Text style={styles.hint}>{status}</Text>}
+        {!!errorMessage && <Text accessibilityRole="alert" style={[styles.hint, { color: C.danger }]}>{errorMessage}</Text>}
+      </View>
+      <View style={{ gap: 10 }}>
+        <Action label="Share file" icon="share-outline" onPress={() => perform('share')} disabled={!!pending} />
+        <Action label="Export a copy" icon="save-outline" onPress={() => perform('export')} disabled={!!pending} secondary />
+        <Action label="Open with another app" icon="open-outline" onPress={() => perform('open')} disabled={!!pending} secondary />
+      </View>
       <View style={{ height: 10 }} />
       <Action label="Back" icon="arrow-back-outline" onPress={onBack} secondary />
     </Panel>
