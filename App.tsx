@@ -120,7 +120,9 @@ function Workspace() {
       {resultRoute ? <FileResult key={resultRoute.file.id} file={resultRoute.file}
         onBack={() => resultRoute.previous ? setResultRoute({ file: resultRoute.previous, from: resultRoute.from }) : navigate(resultRoute.from)}
         onGenerated={file => {
-          setResultRoute({ file, from: resultRoute.from, previous: resultRoute.file });
+          setResultRoute(current => current?.file.id === resultRoute.file.id
+            ? { file, from: current.from, previous: current.file }
+            : current);
           refresh().catch(showError);
         }} /> : <>
       {screen === 'Home' && <>
