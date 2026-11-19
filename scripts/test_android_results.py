@@ -300,6 +300,27 @@ def pdf_scenarios():
     adb("shell", "input", "keyevent", "KEYCODE_BACK")
     print("Decoded the exported PNG in an independent app and verified page dimensions and fixture colors.", flush=True)
 
+    reset_result_scroll()
+    if any(node.get("text") == "omniforge-two-pages-page-1.png" for node in hierarchy()):
+        adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    reset_result_scroll()
+    wait_node("omniforge-two-pages.pdf")
+    tap("Export PDF text", scroll=True)
+    wait_node("omniforge-two-pages.txt", scroll=True)
+    tap("Export a copy", scroll=True)
+    if not any(node.get("text") == "OmniForgeQA" for node in hierarchy()):
+        tap("Download", scroll=True)
+    tap("OmniForgeQA")
+    tap("Use this folder")
+    tap("Allow")
+    wait_node("Copy saved to the selected folder.", scroll=True)
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "out.txt"
+        adb("pull", "/sdcard/Download/OmniForgeQA/omniforge-two-pages.txt", str(path))
+        pages = path.read_text(encoding="utf-8").split("\f")
+    assert [page.strip() for page in pages] == ["Name: 1234", "Invoice 482"], pages
+    print("Exported both original PDF text layers in page order as UTF-8.", flush=True)
+
 
 def run_scenario(name, scenario, *args):
     try:
