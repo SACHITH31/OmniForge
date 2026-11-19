@@ -37,7 +37,7 @@ internal object PdfTextEditing {
   }
 
   private fun bounds(page: PdfRenderer.Page, text: String): RectF {
-    val match = page.searchText(text).singleOrNull()
+    val match = page.searchText(text.trim()).singleOrNull()
     return match?.bounds?.singleOrNull() ?: throw IllegalArgumentException(
       "Editing requires a unique, searchable, single-line text run on this page.")
   }
@@ -49,7 +49,7 @@ internal object PdfTextEditing {
   )
 
   fun replace(document: PdfRenderer, index: Int, id: Int, original: String, replacement: String, target: File): ExpectedEdit {
-    require(replacement.isNotBlank() && replacement != original && replacement.length <= 256 &&
+    require(replacement.isNotBlank() && replacement.trimEnd() != original.trimEnd() && replacement.length <= 256 &&
       replacement.all { it.code in 32..126 }) { "Enter a different single line of Latin text." }
     require(document.pdfFormType == PdfRenderer.PDF_FORM_TYPE_NONE) { "Forms and signature fields are unsupported for text editing." }
     val expected = document.openPage(index).use { page ->
@@ -87,7 +87,7 @@ internal object PdfTextEditing {
           .filter { it.text.isNotBlank() }
           .flatMap { neighbor ->
             require(neighbor.text.length <= 256) { "Nearby text could not be measured safely." }
-            page.searchText(neighbor.text).flatMap { it.bounds }.also {
+            page.searchText(neighbor.text.trim()).flatMap { it.bounds }.also {
               require(it.isNotEmpty()) { "Nearby text could not be measured safely." }
             }
           }
@@ -107,8 +107,8 @@ internal object PdfTextEditing {
 
   fun verify(page: PdfRenderer.Page, replacement: String, expected: ExpectedEdit): RectF {
     val runs = page.pageObjects.mapNotNull { it.second as? PdfPageTextObject }
-    val updated = runs.singleOrNull { it.text == replacement }
-    check(updated != null && runs.none { it.text == expected.original }) { "The saved PDF did not preserve the replacement." }
+    val updated = runs.singleOrNull { it.text.trimEnd() == replacement.trimEnd() }
+    check(updated != null && runs.none { it.text.trimEnd() == expected.original.trimEnd() }) { "The saved PDF did not preserve the replacement." }
     check(updated.font.fontFamily == expected.family && updated.font.isBold == expected.bold &&
       updated.font.isItalic == expected.italic && abs(updated.fontSize - expected.size) < 0.01 &&
       updated.fillColor == expected.color && updated.strokeColor == expected.strokeColor &&

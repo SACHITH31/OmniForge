@@ -78,7 +78,7 @@ export function PdfTextEditor({ file, index, onClose, onSaved }: {
           <Text style={styles.panelCopy}>Select a line to edit using its original text style.</Text>
           {!runs && !error && <ActivityIndicator accessibilityLabel="Reading text objects" color={C.mint} />}
           {runs?.length === 0 && <Text style={styles.panelCopy}>No supported text objects on this page. Scans, symbol fonts, and complex text need a different editing engine.</Text>}
-          {runs?.map(run => <Pressable key={run.id} accessibilityRole="button" accessibilityLabel={`Edit ${run.text}`}
+          {runs?.map(run => <Pressable key={run.id} accessibilityRole="button" accessibilityLabel={`Edit ${run.text.trimEnd()}`}
             style={styles.panel} onPress={() => { select(run); change(run.text); }}>
             <Text style={styles.panelTitle}>{run.text}</Text>
             <Text style={styles.fileMeta}>{run.family} · {run.size.toFixed(1)} pt{run.bold ? ' · Bold' : ''}{run.italic ? ' · Italic' : ''}</Text>
@@ -105,9 +105,9 @@ export function PdfTextEditor({ file, index, onClose, onSaved }: {
               style={{ width: '100%', aspectRatio: preview.width / preview.height, backgroundColor: '#fff' }} />
             <Text style={styles.panelCopy}>Review spacing, nearby artwork, and font appearance. Saving creates a separate PDF. Existing digital signatures apply only to the original.</Text>
           </>}
-          <Pressable accessibilityRole="button" disabled={busy || !value.trim() || value === selected.text}
-            accessibilityState={{ disabled: busy || !value.trim() || value === selected.text }} onPress={() => apply(!!preview)}
-            style={[styles.action, (busy || !value.trim() || value === selected.text) && { opacity: 0.5 }]}>
+          <Pressable accessibilityRole="button" disabled={busy || !value.trim() || value.trimEnd() === selected.text.trimEnd()}
+            accessibilityState={{ disabled: busy || !value.trim() || value.trimEnd() === selected.text.trimEnd() }} onPress={() => apply(!!preview)}
+            style={[styles.action, (busy || !value.trim() || value.trimEnd() === selected.text.trimEnd()) && { opacity: 0.5 }]}>
             <Text style={styles.actionText}>{preview ? 'Save edited copy' : 'Preview replacement'}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" disabled={busy} onPress={() => { select(null); change(''); }} style={styles.actionSecondary}>
