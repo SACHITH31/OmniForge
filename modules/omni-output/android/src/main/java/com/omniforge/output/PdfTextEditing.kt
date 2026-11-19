@@ -1,5 +1,6 @@
 package com.omniforge.output
 
+import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.RectF
@@ -76,8 +77,21 @@ internal object PdfTextEditing {
       }
       val blocks = page.textContents
       val selected = blocks.singleOrNull { it.text.trim() == original.trim() }
-      require(selected != null) { "Choose an isolated text line. This line shares its layout with other text." }
-      val neighbors = blocks.filterNot { it === selected }.flatMap { it.bounds }
+      val neighbors = if (selected != null) {
+        blocks.filterNot { it === selected }.flatMap { it.bounds }
+      } else {
+        // A text-content block can combine distinct PDF objects in a table or paragraph.
+        val objects = page.pageObjects
+        require(objects.size <= 100) { "This page is too dense to separate neighboring text." }
+        objects.filter { it.first != id }.mapNotNull { it.second as? PdfPageTextObject }
+          .filter { it.text.isNotBlank() }
+          .flatMap { neighbor ->
+            require(neighbor.text.length <= 256) { "Nearby text could not be measured safely." }
+            page.searchText(neighbor.text).flatMap { it.bounds }.also {
+              require(it.isNotEmpty()) { "Nearby text could not be measured safely." }
+            }
+          }
+      }
       require(neighbors.size <= 5000) { "This page is too dense for text editing." }
       val expected = ExpectedEdit(document.pageCount, original, originalBounds, neighbors, run.font.fontFamily,
         run.font.isBold, run.font.isItalic, run.fontSize, run.fillColor, run.strokeColor, run.renderMode, run.matrix)
@@ -91,7 +105,7 @@ internal object PdfTextEditing {
     return expected
   }
 
-  fun verify(page: PdfRenderer.Page, replacement: String, expected: ExpectedEdit) {
+  fun verify(page: PdfRenderer.Page, replacement: String, expected: ExpectedEdit): RectF {
     val runs = page.pageObjects.mapNotNull { it.second as? PdfPageTextObject }
     val updated = runs.singleOrNull { it.text == replacement }
     check(updated != null && runs.none { it.text == expected.original }) { "The saved PDF did not preserve the replacement." }
@@ -108,6 +122,31 @@ internal object PdfTextEditing {
       abs(changed.left - expected.before.left) <= 2 && abs(changed.bottom - expected.before.bottom) <= 3 &&
       expected.neighbors.none { RectF.intersects(it, changed) }) {
       "The replacement would leave the page, shift its baseline, or overlap other text."
+    }
+    return RectF(expected.before).apply { union(changed) }
+  }
+
+  fun verifySurroundings(original: Bitmap, edited: Bitmap, area: RectF, pageWidth: Int, pageHeight: Int) {
+    check(original.width == edited.width && original.height == edited.height) { "The preview dimensions changed." }
+    val width = original.width
+    val height = original.height
+    val sx = width.toFloat() / pageWidth
+    val sy = height.toFloat() / pageHeight
+    // Allow the glyph's antialiasing fringe and modest font overhang.
+    val left = kotlin.math.floor((area.left - 3) * sx).toInt()
+    val top = kotlin.math.floor((area.top - 3) * sy).toInt()
+    val right = kotlin.math.ceil((area.right + 3) * sx).toInt()
+    val bottom = kotlin.math.ceil((area.bottom + 3) * sy).toInt()
+    val before = IntArray(width)
+    val after = IntArray(width)
+    for (y in 0 until height) {
+      original.getPixels(before, 0, width, 0, y, width, 1)
+      edited.getPixels(after, 0, width, 0, y, width, 1)
+      for (x in 0 until width) {
+        check((y in top until bottom && x in left until right) || before[x] == after[x]) {
+          "This edit would change the page outside the selected text."
+        }
+      }
     }
   }
 }

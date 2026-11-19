@@ -68,8 +68,17 @@ class OmniOutputModule : Module() {
           PdfRenderer(descriptor).use { edited ->
             check(edited.pageCount == expected.pageCount) { "The edited PDF changed the page count." }
             edited.openPage(index).use { page ->
-              PdfTextEditing.verify(page, replacement, expected)
-              renderPage(page, 1200) + ("documentUri" to Uri.fromFile(temporary).toString())
+              val area = PdfTextEditing.verify(page, replacement, expected)
+              openPdf(source).use { original ->
+                original.openPage(index).use { before ->
+                  withPageBitmap(before, 1200) { originalBitmap ->
+                    withPageBitmap(page, 1200) { editedBitmap ->
+                      PdfTextEditing.verifySurroundings(originalBitmap, editedBitmap, area, page.width, page.height)
+                      encodePage(editedBitmap) + ("documentUri" to Uri.fromFile(temporary).toString())
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -160,15 +169,17 @@ class OmniOutputModule : Module() {
   }
 
   private fun renderPage(page: PdfRenderer.Page, maxSide: Int): Map<String, Any> {
-    return withPageBitmap(page, maxSide) { bitmap ->
-      val bytes = ByteArrayOutputStream()
-      check(bitmap.compress(Bitmap.CompressFormat.JPEG, 88, bytes))
-      mapOf(
-        "uri" to ("data:image/jpeg;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)),
-        "width" to bitmap.width,
-        "height" to bitmap.height
-      )
-    }
+    return withPageBitmap(page, maxSide, ::encodePage)
+  }
+
+  private fun encodePage(bitmap: Bitmap): Map<String, Any> {
+    val bytes = ByteArrayOutputStream()
+    check(bitmap.compress(Bitmap.CompressFormat.JPEG, 88, bytes))
+    return mapOf(
+      "uri" to ("data:image/jpeg;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)),
+      "width" to bitmap.width,
+      "height" to bitmap.height
+    )
   }
 
   private fun <T> withPageBitmap(page: PdfRenderer.Page, maxSide: Int, use: (Bitmap) -> T): T {
