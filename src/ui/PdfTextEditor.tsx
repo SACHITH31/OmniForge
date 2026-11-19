@@ -19,6 +19,7 @@ export function PdfTextEditor({ file, index, onClose, onSaved }: {
   const [selected, select] = useState<EditableRun | null>(null);
   const [value, setValue] = useState('');
   const [preview, setPreview] = useState<EditedPreview | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const active = useRef(false);
@@ -38,6 +39,7 @@ export function PdfTextEditor({ file, index, onClose, onSaved }: {
     discard(temporary.current);
     temporary.current = undefined;
     setPreview(null);
+    setShowOriginal(false);
     setError('');
     setValue(text);
   }
@@ -88,7 +90,18 @@ export function PdfTextEditor({ file, index, onClose, onSaved }: {
             selectTextOnFocus maxLength={256} style={[styles.searchBox, { color: C.text, minHeight: 52 }]} />
           <Text style={styles.panelCopy}>{selected.family} · {selected.size.toFixed(1)} pt{selected.bold ? ' · Bold' : ''}{selected.italic ? ' · Italic' : ''} · Original color and placement</Text>
           {preview && <>
-            <Image source={{ uri: preview.uri }} accessibilityLabel="Edited PDF page preview" resizeMode="contain"
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['Edited', 'Original'] as const).map(label => {
+                const chosen = showOriginal === (label === 'Original');
+                return <Pressable key={label} accessibilityRole="radio" accessibilityState={{ checked: chosen }}
+                  onPress={() => setShowOriginal(label === 'Original')}
+                  style={[styles.action, !chosen && styles.actionSecondary, { flex: 1 }]}>
+                  <Text style={[styles.actionText, !chosen && { color: C.text }]}>{label}</Text>
+                </Pressable>;
+              })}
+            </View>
+            <Image source={{ uri: showOriginal ? preview.originalUri : preview.uri }}
+              accessibilityLabel={showOriginal ? 'Original PDF page preview' : 'Edited PDF page preview'} resizeMode="contain"
               style={{ width: '100%', aspectRatio: preview.width / preview.height, backgroundColor: '#fff' }} />
             <Text style={styles.panelCopy}>Review spacing, nearby artwork, and font appearance. Saving creates a separate PDF. Existing digital signatures apply only to the original.</Text>
           </>}

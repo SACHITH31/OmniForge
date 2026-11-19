@@ -74,7 +74,10 @@ class OmniOutputModule : Module() {
                   withPageBitmap(before, 1200) { originalBitmap ->
                     withPageBitmap(page, 1200) { editedBitmap ->
                       PdfTextEditing.verifySurroundings(originalBitmap, editedBitmap, area, page.width, page.height)
-                      encodePage(editedBitmap) + ("documentUri" to Uri.fromFile(temporary).toString())
+                      encodePage(editedBitmap) + mapOf(
+                        "documentUri" to Uri.fromFile(temporary).toString(),
+                        "originalUri" to checkNotNull(encodePage(originalBitmap)["uri"])
+                      )
                     }
                   }
                 }

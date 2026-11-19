@@ -14,7 +14,7 @@ export type PdfSearchHit = { pageIndex: number; count: number };
 export type PdfThumbnail = Omit<PdfPage, 'pageCount'> & { pageIndex: number };
 
 export type EditableRun = { id: number; text: string; family: string; size: number; bold: boolean; italic: boolean };
-export type EditedPreview = Omit<PdfPage, 'pageCount'> & { documentUri: string };
+export type EditedPreview = Omit<PdfPage, 'pageCount'> & { documentUri: string; originalUri: string };
 
 type OutputModule = {
   savePdfText(source: string, destination: string): Promise<void>;
