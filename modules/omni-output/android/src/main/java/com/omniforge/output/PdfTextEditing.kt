@@ -1,5 +1,7 @@
 package com.omniforge.output
 
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.RectF
 import android.graphics.pdf.PdfRenderer
 import android.graphics.pdf.component.PdfPageTextObject
@@ -54,6 +56,24 @@ internal object PdfTextEditing {
       val run = page.pageObjects.firstOrNull { it.first == id }?.second as? PdfPageTextObject
       require(run != null && run.text == original && family(run) != null) { "The selected text object is unavailable." }
       val originalBounds = bounds(page, original)
+      // Search bounds can stop at the page edge after PDFium clips a long line.
+      // Measure before mutation, calibrated against the actual source run.
+      val sourceTypeface = when (family(run)) {
+        "Courier" -> Typeface.MONOSPACE
+        "Times" -> Typeface.SERIF
+        else -> Typeface.SANS_SERIF
+      }
+      val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = run.fontSize
+        val style = (if (run.font.isBold) Typeface.BOLD else 0) or
+          (if (run.font.isItalic) Typeface.ITALIC else 0)
+        this.typeface = Typeface.create(sourceTypeface, style)
+      }
+      val sourceWidth = paint.measureText(original)
+      require(sourceWidth > 0 && originalBounds.left + originalBounds.width() *
+        paint.measureText(replacement) / sourceWidth <= page.width) {
+        "The replacement is too wide for the available page width."
+      }
       val blocks = page.textContents
       val selected = blocks.singleOrNull { it.text.trim() == original.trim() }
       require(selected != null) { "Choose an isolated text line. This line shares its layout with other text." }
