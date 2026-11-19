@@ -25,7 +25,7 @@ def compare(source, edited):
     old_text = subprocess.check_output(["pdftotext", str(source), "-"]).decode()
     new_text = subprocess.check_output(["pdftotext", str(edited), "-"]).decode()
     assert "Name: 1234" in old_text and "Kasa Sachith" not in old_text
-    assert "Name: Kasa Sachith" in new_text and "1234" not in new_text and "Invoice 482" in new_text
+    assert "Name: Kasa Sachith" in new_text and "1234" not in new_text and "Invoice 482" in new_text, repr(new_text)
     old, old_font = text_layout(source, "Name: 1234")
     new, new_font = text_layout(edited, "Name: Kasa Sachith")
     for attribute in ("family", "size", "color"):
@@ -44,6 +44,15 @@ def compare(source, edited):
     print("Poppler verified replacement, font, size, color, position, and identical pixels outside the edited line.", flush=True)
 
 
+def enter_replacement(value):
+    tap("Replacement text")
+    adb("shell", "input", "keycombination", "KEYCODE_CTRL_LEFT", "KEYCODE_A")
+    adb("shell", "input", "text", value.replace(" ", "%s"))
+    field = next(n for n in hierarchy() if n.get("class") == "android.widget.EditText")
+    assert field.get("text") == value, (field.get("text"), value)
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+
+
 def main():
     multipage_fixture()
     adb("shell", "mkdir", "-p", "/sdcard/Download/OmniForgeQA")
@@ -55,10 +64,7 @@ def main():
     tap("Edit existing text", scroll=True)
     tap("Edit Name: 1234")
     # A replacement wider than the page must be rejected before any copy can be saved.
-    tap("Replacement text")
-    adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")
-    adb("shell", "input", "text", "W" * 65)
-    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    enter_replacement("W" * 65)
     tap("Preview replacement", scroll=True)
     for _ in range(12):
         nodes = hierarchy()
@@ -67,15 +73,10 @@ def main():
             break
         time.sleep(0.5)
     else:
-        raise AssertionError("An overflowing replacement must report an error before offering Save")
+        raise AssertionError([(n.get("text"), n.get("content-desc")) for n in nodes])
     tap("Choose another line", scroll=True)
     tap("Edit Name: 1234")
-    tap("Replacement text")
-    adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")
-    for _ in range(4):
-        adb("shell", "input", "keyevent", "KEYCODE_DEL")
-    adb("shell", "input", "text", "Kasa%sSachith")
-    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    enter_replacement("Name: Kasa Sachith")
     tap("Preview replacement", scroll=True)
     wait_node("Edited PDF page preview", scroll=True)
     tap("Save edited copy", scroll=True)
