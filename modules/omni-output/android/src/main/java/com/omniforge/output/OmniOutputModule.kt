@@ -104,11 +104,7 @@ class OmniOutputModule : Module() {
         "png" -> Bitmap.CompressFormat.PNG
         else -> throw IllegalArgumentException("Unsupported page image format.")
       }
-      val input = savedFile(source)
-      val uri = Uri.parse(destination)
-      val output = File(requireNotNull(uri.path)).canonicalFile
-      require(uri.scheme == "file" && output.parentFile == input.parentFile && output.name.endsWith(".part"))
-      require(output.createNewFile()) { "The temporary output already exists." }
+      val output = createTemporaryOutput(source, destination)
       openPdf(source).use { document ->
         document.openPage(index).use { page ->
           withPageBitmap(page, 1800) { bitmap ->
@@ -145,6 +141,46 @@ class OmniOutputModule : Module() {
           if (matches == 0) null else mapOf("pageIndex" to index, "count" to matches)
         }
       }
+    }
+
+    AsyncFunction("savePdfText") { source: String, destination: String ->
+      require(Build.VERSION.SDK_INT >= 35) { "PDF text export requires Android 15 or later." }
+      openPdf(source).use { document ->
+        val output = createTemporaryOutput(source, destination)
+        var characters = 0L
+        var hasText = false
+        output.bufferedWriter(Charsets.UTF_8).use { writer ->
+          for (index in 0 until document.pageCount) {
+            if (index > 0) writer.write("\n\u000C\n")
+            document.openPage(index).use { page ->
+              for (block in page.textContents) {
+                characters += block.text.length + 1L
+                require(characters <= 8_000_000) { "This document exceeds the text export limit." }
+                hasText = hasText || block.text.isNotBlank()
+                writer.write(block.text)
+                writer.newLine()
+              }
+            }
+          }
+        }
+        require(hasText) { "This PDF has no extractable text. Scanned pages require OCR." }
+      }
+      Unit
+    }
+
+    AsyncFunction("readTextPreview") { source: String ->
+      val buffer = CharArray(8193)
+      var count = 0
+      savedFile(source).bufferedReader(Charsets.UTF_8).use { reader ->
+        while (count < buffer.size) {
+          val read = reader.read(buffer, count, buffer.size - count)
+          if (read <= 0) break
+          count += read
+        }
+      }
+      var limit = minOf(8192, count)
+      if (limit > 0 && buffer[limit - 1].isHighSurrogate()) limit--
+      mapOf("text" to String(buffer, 0, limit), "truncated" to (count > limit))
     }
 
     AsyncFunction("readPdfText") { source: String, index: Int ->
@@ -204,6 +240,15 @@ class OmniOutputModule : Module() {
       descriptor.close()
       throw IOException("This PDF is damaged, password protected, or unsupported.", error)
     }
+  }
+
+  private fun createTemporaryOutput(source: String, destination: String): File {
+    val input = savedFile(source)
+    val uri = Uri.parse(destination)
+    val output = File(requireNotNull(uri.path)).canonicalFile
+    require(uri.scheme == "file" && output.parentFile == input.parentFile && output.name.endsWith(".part"))
+    require(output.createNewFile()) { "The temporary output already exists." }
+    return output
   }
 
   private fun savedFile(source: String): File {

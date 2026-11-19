@@ -1,4 +1,4 @@
-import { writePdfPageImage } from './androidOutput';
+import { writePdfPageImage, writePdfText } from './androidOutput';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -131,18 +131,27 @@ export async function savePdfPageImage(file: StoredFile, pageIndex: number, form
     throw new Error('Choose a valid PDF page.');
   }
 
+  const name = `${safeFileName(file.name)}-page-${pageIndex + 1}.${format === 'png' ? 'png' : 'jpg'}`;
+  return saveConvertedFile(name, 'image/' + format, temp => writePdfPageImage(file, pageIndex, temp, format));
+}
+
+export async function savePdfText(file: StoredFile): Promise<StoredFile> {
+  if (file.mimeType !== 'application/pdf') throw new Error('Choose a PDF document.');
+  return saveConvertedFile(`${safeFileName(file.name)}.txt`, 'text/plain', temp => writePdfText(file, temp));
+}
+
+async function saveConvertedFile(name: string, mimeType: string, write: (temp: string) => Promise<void>) {
   return writeLibrary(async () => {
     await ensureRoot();
     const id = newId();
-    const name = `${safeFileName(file.name)}-page-${pageIndex + 1}.${format === 'png' ? 'png' : 'jpg'}`;
     const uri = `${ROOT}${id}-${name}`;
     const temporary = `${uri}.part`;
     try {
-      await writePdfPageImage(file, pageIndex, temporary, format);
+      await write(temporary);
       const bytes = await fileSize(temporary);
-      if (bytes < 4) throw new Error('The rendered page could not be saved.');
+      if (!bytes) throw new Error('The generated file is empty.');
       await FileSystem.moveAsync({ from: temporary, to: uri });
-      return await saveRecord({ id, name, uri, mimeType: format === 'png' ? 'image/png' : 'image/jpeg', bytes, createdAt: new Date().toISOString(), kind: 'convert' });
+      return await saveRecord({ id, name, uri, mimeType, bytes, createdAt: new Date().toISOString(), kind: 'convert' });
     } catch (error) {
       await Promise.allSettled([temporary, uri].map(path => FileSystem.deleteAsync(path, { idempotent: true })));
       throw error;

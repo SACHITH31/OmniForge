@@ -3,11 +3,12 @@ import { ActivityIndicator, Alert, Animated, BackHandler, Image, Modal, Platform
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, savePdfPageImage, saveSettings, shareFile, toggleFavorite } from './src/core/files';
+import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, savePdfPageImage, savePdfText, saveSettings, shareFile, toggleFavorite } from './src/core/files';
 import { exportOutput, openOutput, renderPdfPage, readPdfText, type PdfPage } from './src/core/androidOutput';
 import { FileLibrary, type LibraryView } from './src/ui/FileLibrary';
 import { FileRow } from './src/ui/FileRow';
 import { PdfThumbnails } from './src/ui/PdfThumbnails';
+import { TextPreview } from './src/ui/TextPreview';
 import { PdfStudio } from './src/ui/PdfStudio';
 import { PdfTextEditor } from './src/ui/PdfTextEditor';
 import { supportsPdfTextEditing } from './src/core/androidOutput';
@@ -237,7 +238,8 @@ function FileResult({ file, onBack, onGenerated }: {
         {isImage && preview === 'loading' && <ActivityIndicator accessibilityLabel="Loading image preview" color={C.mint} />}
         {isImage && preview === 'failed' && <Text style={styles.hint}>The saved image could not be displayed.</Text>}
         {file.mimeType === 'application/pdf' && <PdfPreview file={file} onGenerated={onGenerated} />}
-        {!isImage && file.mimeType !== 'application/pdf' && <Text style={styles.hint}>Preview is unavailable for this format.</Text>}
+        {file.mimeType === 'text/plain' && <TextPreview file={file} />}
+        {!isImage && file.mimeType !== 'application/pdf' && file.mimeType !== 'text/plain' && <Text style={styles.hint}>Preview is unavailable for this format.</Text>}
       </View>
       <View accessibilityLiveRegion="polite">
         {pending && <ActivityIndicator accessibilityLabel="Preparing file action" color={C.mint} />}
@@ -269,13 +271,13 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
   const [saveError, setSaveError] = useState('');
   const saveInFlight = useRef(false);
 
-  async function savePage(format: OutputFormat) {
+  async function savePage(format: OutputFormat | 'text') {
     if (saveInFlight.current) return;
     saveInFlight.current = true;
     setSavingPage(true);
     setSaveError('');
     try {
-      const output = await savePdfPageImage(file, index, format);
+      const output = format === 'text' ? await savePdfText(file) : await savePdfPageImage(file, index, format);
       setSavingPage(false);
       onGenerated(output);
     } catch (cause) {
@@ -342,6 +344,8 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
         <Action label={savingPage ? 'Saving page' : 'Save page as JPEG'} onPress={() => savePage('jpeg')} disabled={savingPage} secondary />
         {supportsPdfTextEditing() && <Action label="Edit existing text" icon="create-outline" onPress={() => setEditorOpen(true)} secondary />}
         <Action label="Save page as PNG" onPress={() => savePage('png')} disabled={savingPage} secondary />
+        {Platform.OS === 'android' && Number(Platform.Version) >= 35 &&
+          <Action label="Export PDF text" onPress={() => savePage('text')} disabled={savingPage} secondary />}
         {!!saveError && <Text accessibilityRole="alert" style={{ color: C.danger }}>{saveError}</Text>}
         {showText && <PdfPageText key={index} file={file} index={index} />}
       </View>
