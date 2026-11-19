@@ -53,18 +53,8 @@ def enter_replacement(value):
     adb("shell", "input", "keyevent", "KEYCODE_BACK")
 
 
-def main():
-    multipage_fixture()
-    adb("shell", "mkdir", "-p", "/sdcard/Download/OmniForgeQA")
-    adb("shell", "am", "start", "-W", "-n", "com.omniforge.app/.MainActivity")
-    wait_node("YOUR OFFLINE WORKSPACE")
-    tap("PDF Studio")
-    tap("Import existing PDF", scroll=True)
-    choose_download("omniforge-two-pages.pdf")
-    tap("Edit existing text", scroll=True)
-    tap("Edit Name: 1234")
-    # A replacement wider than the page must be rejected before any copy can be saved.
-    enter_replacement("W" * 65)
+def expect_rejected(value):
+    enter_replacement(value)
     tap("Preview replacement", scroll=True)
     for _ in range(12):
         nodes = hierarchy()
@@ -74,6 +64,23 @@ def main():
         time.sleep(0.5)
     else:
         raise AssertionError([(n.get("text"), n.get("content-desc")) for n in nodes])
+
+def exercise(name, font, near_text=False):
+    multipage_fixture(name + ".pdf", font, near_text)
+    adb("shell", "mkdir", "-p", "/sdcard/Download/OmniForgeQA")
+    adb("shell", "am", "force-stop", "com.omniforge.app")
+    adb("shell", "am", "start", "-W", "-n", "com.omniforge.app/.MainActivity")
+    wait_node("YOUR OFFLINE WORKSPACE")
+    tap("PDF Studio")
+    tap("Import existing PDF", scroll=True)
+    choose_download(name + ".pdf")
+    tap("Edit existing text", scroll=True)
+    tap("Edit Name: 1234")
+    if near_text:
+        # This fits on the page but reaches the adjacent column.
+        expect_rejected("Name: " + "W" * 23)
+    else:
+        expect_rejected("W" * 65)
     tap("Choose another line", scroll=True)
     tap("Edit Name: 1234")
     enter_replacement("Name: Kasa Sachith")
@@ -81,10 +88,11 @@ def main():
     wait_node("Edited PDF page preview", scroll=True)
     tap("Save edited copy", scroll=True)
     reset_result_scroll()
-    wait_node("omniforge-two-pages-edited.pdf", scroll=True)
+    wait_node(name + "-edited.pdf", scroll=True)
     wait_node("PDF preview, page 1", scroll=True)
     tap("Export a copy", scroll=True)
-    tap("Download", scroll=True)
+    if not any(n.get("text") == "OmniForgeQA" for n in hierarchy()):
+        tap("Download", scroll=True)
     tap("OmniForgeQA")
     tap("Use this folder")
     tap("Allow")
@@ -92,10 +100,11 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         source = Path(directory) / "original.pdf"
         edited = Path(directory) / "edited.pdf"
-        adb("pull", "/sdcard/Download/omniforge-two-pages.pdf", str(source))
-        adb("pull", "/sdcard/Download/OmniForgeQA/omniforge-two-pages-edited.pdf", str(edited))
+        adb("pull", f"/sdcard/Download/{name}.pdf", str(source))
+        adb("pull", f"/sdcard/Download/OmniForgeQA/{name}-edited.pdf", str(edited))
         compare(source, edited)
 
 
 if __name__ == "__main__":
-    main()
+    exercise("omniforge-two-pages", "Helvetica-Bold")
+    exercise("omniforge-courier", "Courier-Oblique", near_text=True)

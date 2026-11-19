@@ -106,7 +106,7 @@ def choose_download(name):
 def choose_image():
     choose_download("omniforge-fixture.png")
 
-def multipage_fixture():
+def multipage_fixture(name="omniforge-two-pages.pdf", font="Helvetica-Bold", near_text=False):
     # Each page has a different size and filled rectangle to expose page mixups.
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
@@ -114,9 +114,14 @@ def multipage_fixture():
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 7 0 R >> >> /Contents 5 0 R >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>",
     ]
-    for commands in [b"0 0 1 rg 10 10 100 100 re f 0 g BT /F1 12 Tf 30 340 Td (Name: 1234) Tj ET", b"1 0 0 rg 20 20 100 100 re f 0 g BT /F1 12 Tf 30 240 Td (Invoice 482) Tj ET"]:
+    first = b"0 0 1 rg 10 10 100 100 re f 0 g BT /F1 12 Tf 30 340 Td (Name: 1234) Tj ET"
+    if near_text:
+        first = b"0 0 1 rg 10 10 100 100 re f 0.1 0.3 0.5 rg BT /F1 12 Tf 30 340 Td (Name: 1234) Tj ET"
+        first += b" 0 g BT /F1 12 Tf 198 340 Td (Verified) Tj ET"
+        first += b" BT /F1 12 Tf 30 319 Td (Delivery address) Tj ET"
+    for commands in [first, b"1 0 0 rg 20 20 100 100 re f 0 g BT /F1 12 Tf 30 240 Td (Invoice 482) Tj ET"]:
         objects.append(b"<< /Length %d >>\nstream\n" % len(commands) + commands + b"\nendstream")
-    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /%s >>" % font.encode("ascii"))
     pdf = bytearray(b"%PDF-1.4\n")
     offsets = []
     for index, obj in enumerate(objects, 1):
@@ -128,11 +133,11 @@ def multipage_fixture():
         pdf.extend(b"%010d 00000 n \n" % offset)
     pdf.extend(b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, xref))
     with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / "omniforge-two-pages.pdf"
+        path = Path(directory) / name
         path.write_bytes(pdf)
-        adb("push", str(path), "/sdcard/Download/omniforge-two-pages.pdf")
+        adb("push", str(path), f"/sdcard/Download/{name}")
         adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
-            "-d", "file:///sdcard/Download/omniforge-two-pages.pdf")
+            "-d", f"file:///sdcard/Download/{name}")
 
 
 def verify_receiver(action, receipt):
