@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
+import android.graphics.pdf.component.HighlightAnnotation
 import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -144,6 +145,39 @@ class OmniOutputModule : Module() {
           if (matches == 0) null else mapOf("pageIndex" to index, "count" to matches)
         }
       }
+    }
+
+    AsyncFunction("savePdfHighlight") { source: String, index: Int, phrase: String, destination: String ->
+      require(PdfTextEditing.available()) { "PDF highlights require a newer Android PDF extension." }
+      val query = phrase.trim()
+      require(query.isNotBlank() && query.length <= 120) { "Enter up to 120 characters to highlight." }
+      val output = createTemporaryOutput(source, destination)
+      val (pageCount, previousCount) = openPdf(source).use { document ->
+        require(document.pdfFormType == PdfRenderer.PDF_FORM_TYPE_NONE) { "Highlighting is unavailable for forms and signature fields." }
+        val count = document.openPage(index).use { page ->
+          val matches = page.searchText(query)
+          require(matches.isNotEmpty()) { "That text was not found on this page." }
+          require(matches.size == 1) { "Choose a phrase that appears once on this page." }
+          val boxes = matches.single().bounds
+          require(boxes.isNotEmpty() && boxes.size <= 32 && boxes.all {
+            !it.isEmpty && it.left >= 0 && it.top >= 0 && it.right <= page.width && it.bottom <= page.height
+          }) { "This text cannot be highlighted within the page." }
+          val existing = page.pageAnnotations.count { it.second is HighlightAnnotation }
+          check(page.addPageAnnotation(HighlightAnnotation(boxes)) >= 0) { "Could not add a PDF highlight." }
+          existing
+        }
+        ParcelFileDescriptor.open(output, ParcelFileDescriptor.MODE_READ_WRITE).use { document.write(it, false) }
+        document.pageCount to count
+      }
+      openPdf(destination).use { document ->
+        check(document.pageCount == pageCount) { "The highlighted copy changed the page count." }
+        document.openPage(index).use { page ->
+          check(page.pageAnnotations.count { it.second is HighlightAnnotation } == previousCount + 1) {
+            "The highlight was not saved in the PDF."
+          }
+        }
+      }
+      Unit
     }
 
     AsyncFunction("savePdfText") { source: String, destination: String ->
