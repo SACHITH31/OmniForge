@@ -77,11 +77,43 @@ jobs:
             python3 scripts/test_android_results.py
       - name: Record signed APK checksum
         run: sha256sum "OmniForge-$GITHUB_REF_NAME.apk" > SHA256SUMS.txt
-      - uses: actions/upload-artifact@v4
+      - id: candidate
+        uses: actions/upload-artifact@v4
         with:
           name: signed-candidate-${{ github.ref_name }}
           path: |
             OmniForge-${{ github.ref_name }}.apk
             SHA256SUMS.txt
             source-commit.txt
+          if-no-files-found: error
+
+      - name: Prepare download-first candidate notes
+        shell: bash
+        env:
+          CANDIDATE_ARTIFACT: ${{ steps.candidate.outputs.artifact-url }}
+        run: |
+          apk="OmniForge-$GITHUB_REF_NAME.apk"
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          {
+            printf '## Download OmniForge %s\n\n' "$GITHUB_REF_NAME"
+            printf '[Download the signed candidate APK and checksum](%s)\n\n' "$CANDIDATE_ARTIFACT"
+            printf -- '- APK filename: `%s`\n' "$apk"
+            printf -- '- Size in bytes: %s\n' "$(stat -c %s "$apk")"
+            printf -- '- Source: `%s`\n' "$(cat source-commit.txt)"
+            printf -- '- SHA-256: `%s`\n' "$(cut -d ' ' -f 1 SHA256SUMS.txt)"
+            printf -- '- %s\n' "$("$tools/aapt2" dump badging "$apk" | sed -n '/^sdkVersion:/p')"
+            printf -- '- %s\n' "$("$tools/apksigner" verify --print-certs "$apk" | sed -n '/^Signer #1 certificate SHA-256 digest:/p')"
+            printf '\n[Android CI and emulator results](%s/%s/actions/runs/%s)\n\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            printf '### Changes\n\n'
+            awk -v heading="## [${GITHUB_REF_NAME#v}]" '
+              index($0, heading) == 1 { notes = 1; next }
+              notes && /^## / { exit }
+              notes && !/^\[/ { print }
+            ' CHANGELOG.md
+          } > CANDIDATE-NOTES.md
+          cat CANDIDATE-NOTES.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-notes-${{ github.ref_name }}
+          path: CANDIDATE-NOTES.md
           if-no-files-found: error

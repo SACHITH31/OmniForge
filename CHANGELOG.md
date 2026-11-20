@@ -4,6 +4,8 @@ This file tracks notable changes to OmniForge. The format follows [Keep a Change
 
 ## [Unreleased]
 
+## [0.2.0]
+
 ### Added
 
 - Convert JPEG and PNG images, adjust JPEG compression, and create PDFs from images on the device.
@@ -21,4 +23,5 @@ This file tracks notable changes to OmniForge. The format follows [Keep a Change
 - Bundle JavaScript in the standalone Android APK so it launches without Metro.
 - Keep workspace controls clear of Android system bars and return from results to their originating screen.
 
-[Unreleased]: https://github.com/SACHITH31/OmniForge/pull/3
+[Unreleased]: https://github.com/SACHITH31/OmniForge/commits/main
+[0.2.0]: https://github.com/SACHITH31/OmniForge/pull/3
