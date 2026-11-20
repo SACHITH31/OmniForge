@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Animated, BackHandler, Image, Modal, Platform
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, savePdfPageImage, savePdfText, saveSettings, shareFile, toggleFavorite } from './src/core/files';
+import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, saveHighlightedPdf, savePdfPageImage, savePdfText, saveSettings, shareFile, toggleFavorite } from './src/core/files';
 import { exportOutput, openOutput, renderPdfPage, readPdfText, type PdfPage } from './src/core/androidOutput';
 import { FileLibrary, type LibraryView } from './src/ui/FileLibrary';
 import { FileRow } from './src/ui/FileRow';
@@ -262,6 +262,8 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(false);
   const [showText, setShowText] = useState(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const [highlightError, setHighlightError] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [thumbnailsOpen, setThumbnailsOpen] = useState(false);
@@ -287,6 +289,23 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
       saveInFlight.current = false;
     }
   }
+  async function saveHighlight() {
+    if (highlight === null || !highlight.trim() || saveInFlight.current) return;
+    saveInFlight.current = true;
+    setSavingPage(true);
+    setHighlightError('');
+    try {
+      const saved = await saveHighlightedPdf(file, index, highlight);
+      setHighlight(null);
+      onGenerated(saved);
+    } catch (cause) {
+      setHighlightError(cause instanceof Error ? cause.message : 'The highlight could not be saved.');
+    } finally {
+      saveInFlight.current = false;
+      setSavingPage(false);
+    }
+  }
+
   const [page, setPage] = useState<PdfPage | null>(null);
   const [error, setError] = useState('');
   const [viewport, setViewport] = useState(0);
@@ -346,6 +365,10 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
         <Action label="Save page as PNG" onPress={() => savePage('png')} disabled={savingPage} secondary />
         {Platform.OS === 'android' && Number(Platform.Version) >= 35 &&
           <Action label="Export PDF text" onPress={() => savePage('text')} disabled={savingPage} secondary />}
+        {supportsPdfTextEditing() && <Action label="Highlight text" disabled={savingPage} onPress={() => {
+          setHighlightError('');
+          setHighlight('');
+        }} secondary />}
         {!!saveError && <Text accessibilityRole="alert" style={{ color: C.danger }}>{saveError}</Text>}
         {showText && <PdfPageText key={index} file={file} index={index} />}
       </View>
@@ -361,6 +384,23 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
         setSearchOpen(false);
         setIndex(pageIndex);
       }} />}
+    <Modal visible={highlight !== null} transparent animationType="fade"
+      onRequestClose={() => { if (!saveInFlight.current) setHighlight(null); }}>
+      <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#0008' }}>
+        <View accessibilityViewIsModal style={[styles.panel, { width: '100%', maxWidth: 420, alignSelf: 'center', gap: 10 }]}>
+          <Text accessibilityRole="header" style={styles.panelTitle}>Highlight text on page {index + 1}</Text>
+          <Text style={styles.panelCopy}>Enter a phrase that appears once on this page. The highlight is saved in a separate PDF copy.</Text>
+          <View style={styles.searchBox}>
+            <TextInput accessibilityLabel="Phrase to highlight" value={highlight ?? ''} onChangeText={setHighlight}
+              editable={!savingPage} autoCorrect={false} maxLength={120} style={styles.searchInput} />
+          </View>
+          {!!highlightError && <Text accessibilityRole="alert" style={{ color: C.danger }}>{highlightError}</Text>}
+          <Action label={savingPage ? 'Saving highlight' : 'Save highlighted copy'} onPress={saveHighlight}
+            disabled={savingPage || !highlight?.trim()} />
+          <Action label="Cancel" onPress={() => setHighlight(null)} disabled={savingPage} secondary />
+        </View>
+      </View>
+    </Modal>
     <Modal visible={jump !== null} transparent animationType="fade" onRequestClose={() => setJump(null)}>
       <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#0008' }}>
         <View accessibilityViewIsModal style={[styles.panel, { width: '100%', maxWidth: 420, alignSelf: 'center', gap: 10 }]}>

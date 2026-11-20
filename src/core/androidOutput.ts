@@ -17,6 +17,7 @@ export type EditableRun = { id: number; text: string; family: string; size: numb
 export type EditedPreview = Omit<PdfPage, 'pageCount'> & { documentUri: string; originalUri: string };
 
 type OutputModule = {
+  savePdfHighlight(source: string, index: number, phrase: string, destination: string): Promise<void>;
   savePdfText(source: string, destination: string): Promise<void>;
   readTextPreview(source: string): Promise<{ text: string; truncated: boolean }>;
   supportsPdfTextEditing: boolean;
@@ -103,4 +104,8 @@ export async function writePdfText(file: StoredFile, destination: string) {
 
 export async function readTextPreview(file: StoredFile) {
   return androidOutput().readTextPreview(file.uri);
+}
+
+export async function writePdfHighlight(file: StoredFile, index: number, phrase: string, destination: string) {
+  await androidOutput().savePdfHighlight(file.uri, index, phrase, destination);
 }

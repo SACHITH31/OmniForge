@@ -115,6 +115,46 @@ def exercise(name, font, near_text=False):
         compare(source, edited)
 
 
+
+def exercise_highlight():
+    name = "omniforge-highlight-fixture"
+    multipage_fixture(name + ".pdf")
+    adb("shell", "am", "force-stop", "com.omniforge.app")
+    adb("shell", "am", "start", "-W", "-n", "com.omniforge.app/.MainActivity")
+    wait_node("YOUR OFFLINE WORKSPACE")
+    tap("PDF Studio")
+    tap("Import existing PDF", scroll=True)
+    choose_download(name + ".pdf")
+    tap("Highlight text", scroll=True)
+    tap("Phrase to highlight")
+    adb("shell", "input", "text", "1234")
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    tap("Save highlighted copy")
+    wait_node(name + "-highlighted.pdf", scroll=True)
+    tap("Export a copy", scroll=True)
+    if not any(n.get("text") == "OmniForgeQA" for n in hierarchy()):
+        tap("Download", scroll=True)
+    tap("OmniForgeQA")
+    tap("Use this folder")
+    tap("Allow")
+    wait_node("Copy saved to the selected folder.", scroll=True)
+    with tempfile.TemporaryDirectory() as directory:
+        original = Path(directory) / "original.pdf"
+        marked = Path(directory) / "marked.pdf"
+        adb("pull", f"/sdcard/Download/{name}.pdf", str(original))
+        adb("pull", f"/sdcard/Download/OmniForgeQA/{name}-highlighted.pdf", str(marked))
+        extract = lambda path: subprocess.check_output(["pdftotext", str(path), "-"])
+        assert extract(original) == extract(marked), "Highlight changed the selectable PDF text"
+        assert raster(original, 2) == raster(marked, 2), "Highlight changed the next page"
+        before = raster(original, 1).split(b"\n", 3)[3]
+        after = raster(marked, 1).split(b"\n", 3)[3]
+        assert len(before) == len(after) == 300 * 400 * 3
+        changed = {offset // 3 for offset, (a, b) in enumerate(zip(before, after)) if a != b}
+        assert changed and all(55 <= px % 300 <= 110 and 40 <= px // 300 <= 75 for px in changed)
+        print("Poppler rendered the saved highlight over the selected phrase and confirmed unchanged text and page two.", flush=True)
+
+
 if __name__ == "__main__":
     exercise("omniforge-two-pages", "Helvetica-Bold")
     exercise("omniforge-courier", "Courier-Oblique", near_text=True)
+    exercise_highlight()

@@ -1,4 +1,4 @@
-import { writePdfPageImage, writePdfText } from './androidOutput';
+import { writePdfHighlight, writePdfPageImage, writePdfText } from './androidOutput';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -138,6 +138,12 @@ export async function savePdfPageImage(file: StoredFile, pageIndex: number, form
 export async function savePdfText(file: StoredFile): Promise<StoredFile> {
   if (file.mimeType !== 'application/pdf') throw new Error('Choose a PDF document.');
   return saveConvertedFile(`${safeFileName(file.name)}.txt`, 'text/plain', temp => writePdfText(file, temp));
+}
+
+export function saveHighlightedPdf(file: StoredFile, index: number, phrase: string): Promise<StoredFile> {
+  if (file.mimeType !== 'application/pdf') return Promise.reject(new Error('Choose a PDF document.'));
+  return saveConvertedFile(`${safeFileName(file.name)}-highlighted.pdf`, 'application/pdf',
+    temp => writePdfHighlight(file, index, phrase, temp));
 }
 
 async function saveConvertedFile(name: string, mimeType: string, write: (temp: string) => Promise<void>) {
