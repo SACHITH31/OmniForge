@@ -1,6 +1,6 @@
-import { convertImage, imageToPdf, loadFiles, savePdfPageAsJpeg } from '../src/core/files';
+import { convertImage, imageToPdf, loadFiles, loadSettings, saveSettings, saveEditedPdf, savePdfPageImage, toggleFavorite } from '../src/core/files';
 
-jest.mock('../src/core/androidOutput', () => ({ renderPdfPage: jest.fn() }));
+jest.mock('../src/core/androidOutput', () => ({ writePdfPageImage: jest.fn() }));
 
 const memory: Record<string, string> = {};
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -9,6 +9,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn(async (key: string) => { delete memory[key]; }),
 }));
 jest.mock('expo-file-system/legacy', () => ({
+  cacheDirectory: 'file:///cache/',
   documentDirectory: 'file:///documents/',
   EncodingType: { Base64: 'base64' },
   makeDirectoryAsync: jest.fn(async () => {}),
@@ -57,14 +58,13 @@ const pdf = {
   mimeType: 'application/pdf', bytes: 1024, createdAt: '2020-01-01', kind: 'import' as const,
 };
 
-test('writes the chosen PDF page as a separate JPEG and records it after moving it into place', async () => {
+test.each(['jpeg', 'png'] as const)('writes a separate %s page image before indexing it', async format => {
   const renderer = require('../src/core/androidOutput');
   const fs = require('expo-file-system/legacy');
-  renderer.renderPdfPage.mockResolvedValue({ uri: 'data:image/jpeg;base64,/9j/2Q==' });
-  const result = await savePdfPageAsJpeg(pdf, 1);
-  expect(renderer.renderPdfPage).toHaveBeenCalledWith(pdf, 1, 1800);
-  expect(result).toMatchObject({ name: 'Invoice-page-2.jpg', mimeType: 'image/jpeg' });
-  expect(fs.writeAsStringAsync).toHaveBeenCalledWith(`${result.uri}.part`, '/9j/2Q==', { encoding: 'base64' });
+  renderer.writePdfPageImage.mockResolvedValue(undefined);
+  const result = await savePdfPageImage(pdf, 1, format);
+  expect(renderer.writePdfPageImage).toHaveBeenCalledWith(pdf, 1, `${result.uri}.part`, format);
+  expect(result).toMatchObject({ name: `Invoice-page-2.${format === 'png' ? 'png' : 'jpg'}`, mimeType: `image/${format}` });
   expect(fs.moveAsync).toHaveBeenCalledWith({ from: `${result.uri}.part`, to: result.uri });
   expect(await loadFiles()).toEqual([result]);
   expect(fs.deleteAsync).not.toHaveBeenCalledWith(pdf.uri, expect.anything());
@@ -73,12 +73,42 @@ test('writes the chosen PDF page as a separate JPEG and records it after moving 
 test('cleans up partial JPEG output when storage fails and leaves the source intact', async () => {
   const renderer = require('../src/core/androidOutput');
   const fs = require('expo-file-system/legacy');
-  renderer.renderPdfPage.mockResolvedValue({ uri: 'data:image/jpeg;base64,/9j/2Q==' });
+  renderer.writePdfPageImage.mockResolvedValue(undefined);
   fs.moveAsync.mockRejectedValueOnce(new Error('Storage unavailable'));
-  await expect(savePdfPageAsJpeg(pdf, 0)).rejects.toThrow('Storage unavailable');
+  await expect(savePdfPageImage(pdf, 0, 'jpeg')).rejects.toThrow('Storage unavailable');
   const destination = fs.moveAsync.mock.calls[0][0].to;
   expect(fs.deleteAsync).toHaveBeenCalledWith(`${destination}.part`, { idempotent: true });
   expect(fs.deleteAsync).toHaveBeenCalledWith(destination, { idempotent: true });
   expect(fs.deleteAsync).not.toHaveBeenCalledWith(pdf.uri, expect.anything());
   expect(await loadFiles()).toEqual([]);
+});
+
+test('keeps earlier library entries when concurrent conversions take the index beyond 100', async () => {
+  const earlier = Array.from({ length: 100 }, (_, n) => ({ ...pdf, id: String(n) }));
+  memory['omniforge.files.v1'] = JSON.stringify(earlier);
+  const [one, two] = await Promise.all([convertImage(asset, 'png', 1), convertImage(asset, 'jpeg', 0.72)]);
+  expect(await loadFiles()).toEqual([two, one, ...earlier]);
+});
+
+test('saves only a native editor working copy and retains its source', async () => {
+  await expect(saveEditedPdf(pdf, pdf.uri)).rejects.toThrow('preview');
+  const result = await saveEditedPdf(pdf, 'file:///cache/pdf-edits/edit-17.pdf');
+  expect(result).toMatchObject({ name: 'Invoice-edited.pdf', mimeType: 'application/pdf' });
+  expect(result.uri).not.toBe(pdf.uri);
+  expect(await loadFiles()).toEqual([result]);
+});
+
+test('favorites a legacy record and preserves simultaneous toggles', async () => {
+  memory['omniforge.files.v1'] = JSON.stringify([pdf]);
+  expect((await toggleFavorite(pdf.id))[0].favorite).toBe(true);
+  await Promise.all([toggleFavorite(pdf.id), toggleFavorite(pdf.id)]);
+  expect(await loadFiles()).toEqual([{ ...pdf, favorite: true }]);
+  await expect(toggleFavorite('missing')).rejects.toThrow('no longer');
+});
+
+test('restores old JPEG settings with system appearance and persists an explicit theme', async () => {
+  memory['omniforge.settings.v1'] = JSON.stringify({ jpegQuality: 0.9 });
+  expect(await loadSettings()).toEqual({ jpegQuality: 0.9, appearance: 'system' });
+  await saveSettings({ jpegQuality: 0.9, appearance: 'dark' });
+  expect(await loadSettings()).toEqual({ jpegQuality: 0.9, appearance: 'dark' });
 });

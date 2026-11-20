@@ -8,14 +8,18 @@ export interface StoredFile {
   mimeType: string;
   bytes: number;
   createdAt: string;
+  favorite?: boolean;
   kind: ToolKind;
 }
 
+export type ThemePreference = 'system' | 'light' | 'dark';
+
 export interface AppSettings {
+  appearance: ThemePreference;
   jpegQuality: number;
 }
 
-export const DEFAULT_SETTINGS: AppSettings = { jpegQuality: 0.72 };
+export const DEFAULT_SETTINGS: AppSettings = { jpegQuality: 0.72, appearance: 'system' };
 
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return 'Unknown size';

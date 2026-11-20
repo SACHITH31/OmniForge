@@ -5,6 +5,7 @@ group = 'com.omniforge.output'
 version = '1.0.0'
 
 android {
+  compileSdkExtension 18
   namespace 'com.omniforge.output'
   defaultConfig {
     versionCode 1

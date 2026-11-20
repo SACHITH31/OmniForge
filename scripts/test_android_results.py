@@ -106,7 +106,7 @@ def choose_download(name):
 def choose_image():
     choose_download("omniforge-fixture.png")
 
-def multipage_fixture():
+def multipage_fixture(name="omniforge-two-pages.pdf", font="Helvetica-Bold", near_text=False):
     # Each page has a different size and filled rectangle to expose page mixups.
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
@@ -114,9 +114,14 @@ def multipage_fixture():
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 7 0 R >> >> /Contents 5 0 R >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>",
     ]
-    for commands in [b"0 0 1 rg 10 10 100 100 re f 0 g BT /F1 12 Tf 30 340 Td (Name: 1234) Tj ET", b"1 0 0 rg 20 20 100 100 re f 0 g BT /F1 12 Tf 30 240 Td (Invoice 482) Tj ET"]:
+    first = b"0 0 1 rg 10 10 100 100 re f 0 g BT /F1 12 Tf 30 340 Td (Name: 1234) Tj ET"
+    if near_text:
+        first = b"0 0 1 rg 10 10 100 100 re f 0.1 0.3 0.5 rg BT /F1 12 Tf 30 340 Td (Name: 1234) Tj ET"
+        first += b" 0 g BT /F1 12 Tf 198 340 Td (Verified) Tj ET"
+        first += b" BT /F1 12 Tf 30 319 Td (Delivery address) Tj ET"
+    for commands in [first, b"1 0 0 rg 20 20 100 100 re f 0 g BT /F1 12 Tf 30 240 Td (Invoice 482) Tj ET"]:
         objects.append(b"<< /Length %d >>\nstream\n" % len(commands) + commands + b"\nendstream")
-    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /%s >>" % font.encode("ascii"))
     pdf = bytearray(b"%PDF-1.4\n")
     offsets = []
     for index, obj in enumerate(objects, 1):
@@ -128,21 +133,21 @@ def multipage_fixture():
         pdf.extend(b"%010d 00000 n \n" % offset)
     pdf.extend(b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, xref))
     with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / "omniforge-two-pages.pdf"
+        path = Path(directory) / name
         path.write_bytes(pdf)
-        adb("push", str(path), "/sdcard/Download/omniforge-two-pages.pdf")
+        adb("push", str(path), f"/sdcard/Download/{name}")
         adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
-            "-d", "file:///sdcard/Download/omniforge-two-pages.pdf")
+            "-d", f"file:///sdcard/Download/{name}")
 
 
-def verify_receiver(action, checksum):
-    expected = f"QA received {action} {checksum}"
+def verify_receiver(action, receipt):
+    expected = f"QA received {action} {receipt}"
     for _ in range(8):
         nodes = hierarchy()
         if any(node.get("text") == expected for node in nodes):
             return
         if any("QA receiver error" in node.get("text", "") for node in nodes):
-            raise AssertionError("Receiving application could not read the granted JPEG URI")
+            raise AssertionError("Receiving application rejected the saved file")
         if any(node.get("text", "").casefold() == "just once" and node.get("enabled") == "true" for node in nodes):
             tap("Just once")
         else:
@@ -212,6 +217,27 @@ def share_and_open(checksum):
     print("Share and Open delivered the exact exported JPEG bytes to an independent Android app.", flush=True)
 
 
+def library_favorites():
+    name = "omniforge-fixture-converted.jpg"
+    tap("Files")
+    tap("Favorite " + name, scroll=True)
+    tap("Filter Favorites", scroll=True)
+    tap("Sort by Newest", scroll=True)
+    tap("View " + name, scroll=True)
+    wait_node("Preview of " + name, scroll=True)
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    wait_node("Sort by Name", scroll=True)
+    assert wait_node("Filter Favorites", scroll=True).get("checked") == "true"
+    adb("shell", "am", "force-stop", "com.omniforge.app")
+    adb("shell", "am", "start", "-W", "-n", "com.omniforge.app/.MainActivity")
+    wait_node("Pinned to your workspace", scroll=True)
+    tap("Files")
+    tap("Filter Favorites", scroll=True)
+    tap("Favorite " + name, scroll=True)
+    wait_node("Star a file to find it here and on Home.", scroll=True)
+    print("Favorite survived restart, sort and filter survived Back, and unpin updated the library.", flush=True)
+
+
 def pdf_scenarios():
     tap("PDF Studio")
     tap("Choose image & create PDF", scroll=True)
@@ -267,6 +293,33 @@ def pdf_scenarios():
     reset_result_scroll()
     wait_node("omniforge-two-pages.pdf")
     print("Saved the selected PDF page as a separate JPEG and returned to the source PDF.", flush=True)
+    tap("Save page as PNG", scroll=True)
+    wait_node("Preview of omniforge-two-pages-page-1.png", scroll=True)
+    tap("Open with another app", scroll=True)
+    verify_receiver("Open", "PNG 1350x1800 blue rectangle on white")
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    print("Decoded the exported PNG in an independent app and verified page dimensions and fixture colors.", flush=True)
+
+    reset_result_scroll()
+    if any(node.get("text") == "omniforge-two-pages-page-1.png" for node in hierarchy()):
+        adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    reset_result_scroll()
+    wait_node("omniforge-two-pages.pdf")
+    tap("Export PDF text", scroll=True)
+    wait_node("omniforge-two-pages.txt", scroll=True)
+    tap("Export a copy", scroll=True)
+    if not any(node.get("text") == "OmniForgeQA" for node in hierarchy()):
+        tap("Download", scroll=True)
+    tap("OmniForgeQA")
+    tap("Use this folder")
+    tap("Allow")
+    wait_node("Copy saved to the selected folder.", scroll=True)
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "out.txt"
+        adb("pull", "/sdcard/Download/OmniForgeQA/omniforge-two-pages.txt", str(path))
+        pages = path.read_text(encoding="utf-8").split("\f")
+    assert [page.strip() for page in pages] == ["Name: 1234", "Invoice 482"], pages
+    print("Exported both original PDF text layers in page order as UTF-8.", flush=True)
 
 
 def run_scenario(name, scenario, *args):
@@ -289,5 +342,8 @@ if __name__ == "__main__":
     if conversion_ok:
         _, handoff_ok = run_scenario("Share and Open", share_and_open, checksum)
     _, pdf_ok = run_scenario("PDF creation, import and viewing", pdf_scenarios)
-    if not (conversion_ok and handoff_ok and pdf_ok):
+    library_ok = False
+    if conversion_ok:
+        _, library_ok = run_scenario("persistent file favorites", library_favorites)
+    if not (conversion_ok and handoff_ok and pdf_ok and library_ok):
         raise SystemExit(1)

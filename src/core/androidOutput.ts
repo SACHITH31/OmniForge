@@ -13,7 +13,16 @@ export type PdfSearchHit = { pageIndex: number; count: number };
 
 export type PdfThumbnail = Omit<PdfPage, 'pageCount'> & { pageIndex: number };
 
+export type EditableRun = { id: number; text: string; family: string; size: number; bold: boolean; italic: boolean };
+export type EditedPreview = Omit<PdfPage, 'pageCount'> & { documentUri: string; originalUri: string };
+
 type OutputModule = {
+  savePdfText(source: string, destination: string): Promise<void>;
+  readTextPreview(source: string): Promise<{ text: string; truncated: boolean }>;
+  supportsPdfTextEditing: boolean;
+  inspectPdfRuns(source: string, index: number): Promise<EditableRun[]>;
+  previewPdfEdit(source: string, index: number, id: number, original: string, replacement: string): Promise<EditedPreview>;
+  savePdfPageImage(source: string, index: number, destination: string, format: 'jpeg' | 'png'): Promise<void>;
   renderPdfThumbnails(source: string, first: number, count: number): Promise<PdfThumbnail[]>;
   searchPdfPages(source: string, query: string, first: number, count: number): Promise<PdfSearchHit[]>;
   readPdfText(source: string, index: number): Promise<PdfTextBlock[]>;
@@ -70,4 +79,28 @@ export async function searchPdfPages(file: StoredFile, query: string, first: num
 
 export async function renderPdfThumbnails(file: StoredFile, first: number, count: number): Promise<PdfThumbnail[]> {
   return androidOutput().renderPdfThumbnails(file.uri, first, count);
+}
+
+export async function writePdfPageImage(file: StoredFile, index: number, destination: string, format: 'jpeg' | 'png') {
+  await androidOutput().savePdfPageImage(file.uri, index, destination, format);
+}
+
+export function supportsPdfTextEditing() {
+  return requireOptionalNativeModule<OutputModule>('OmniOutput')?.supportsPdfTextEditing === true;
+}
+
+export async function inspectPdfRuns(file: StoredFile, index: number) {
+  return androidOutput().inspectPdfRuns(file.uri, index);
+}
+
+export async function previewPdfEdit(file: StoredFile, index: number, run: EditableRun, replacement: string) {
+  return androidOutput().previewPdfEdit(file.uri, index, run.id, run.text, replacement);
+}
+
+export async function writePdfText(file: StoredFile, destination: string) {
+  await androidOutput().savePdfText(file.uri, destination);
+}
+
+export async function readTextPreview(file: StoredFile) {
+  return androidOutput().readTextPreview(file.uri);
 }

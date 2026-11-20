@@ -3,9 +3,15 @@ import { ActivityIndicator, Alert, Animated, BackHandler, Image, Modal, Platform
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, savePdfPageAsJpeg, saveSettings, shareFile } from './src/core/files';
+import { clearFiles, convertImage, imageToPdf, importPdf, loadFiles, loadSettings, pickImage, savePdfPageImage, savePdfText, saveSettings, shareFile, toggleFavorite } from './src/core/files';
 import { exportOutput, openOutput, renderPdfPage, readPdfText, type PdfPage } from './src/core/androidOutput';
+import { FileLibrary, type LibraryView } from './src/ui/FileLibrary';
+import { FileRow } from './src/ui/FileRow';
 import { PdfThumbnails } from './src/ui/PdfThumbnails';
+import { TextPreview } from './src/ui/TextPreview';
+import { PdfStudio } from './src/ui/PdfStudio';
+import { PdfTextEditor } from './src/ui/PdfTextEditor';
+import { supportsPdfTextEditing } from './src/core/androidOutput';
 import { PdfSearch } from './src/ui/PdfSearch';
 import { themes, useWorkspaceTheme, WorkspaceTheme } from './src/ui/theme';
 import { AppSettings, DEFAULT_SETTINGS, formatBytes, OutputFormat, StoredFile } from './src/core/types';
@@ -37,39 +43,49 @@ function Action({ label, icon, onPress, secondary, disabled }: { label: string; 
   </Pressable>;
 }
 
-function FileRow({ file, onShare, onOpen }: { file: StoredFile; onShare: () => void; onOpen: () => void }) {
-  const { C, styles } = useWorkspaceTheme();
-  const icon: IconName = file.mimeType === 'application/pdf' ? 'document-text-outline' : 'image-outline';
-  return <View style={styles.fileRow}>
-    <View style={[styles.fileIcon, { backgroundColor: file.mimeType === 'application/pdf' ? `${C.purple}1E` : `${C.mint}1E` }]}><Ionicons name={icon} size={22} color={file.mimeType === 'application/pdf' ? C.purple : C.mint} /></View>
-    <Pressable style={{ flex: 1, minWidth: 0, minHeight: 48, justifyContent: 'center' }} accessibilityRole="button" accessibilityLabel={`View ${file.name}`} onPress={onOpen}><Text numberOfLines={1} style={styles.fileName}>{file.name}</Text><Text style={styles.fileMeta}>{formatBytes(file.bytes)} · {new Date(file.createdAt).toLocaleDateString()}</Text></Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel={`Share ${file.name}`} onPress={onShare} hitSlop={10} style={styles.shareButton}><Ionicons name="share-outline" size={21} color={C.mint} /></Pressable>
-  </View>;
-}
-
 export default function App() {
-  const theme = themes[useColorScheme() === 'light' ? 'light' : 'dark'];
+  const systemMode = useColorScheme() === 'light' ? 'light' : 'dark';
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const latest = useRef(DEFAULT_SETTINGS);
+  const ready = useRef(false);
+  const pending = useRef(Promise.resolve());
+  useEffect(() => {
+    let active = true;
+    loadSettings().then(value => {
+      if (active) { latest.current = value; setSettings(value); ready.current = true; }
+    });
+    return () => { active = false; };
+  }, []);
+  function updateSettings(change: Partial<AppSettings>) {
+    if (!ready.current) return;
+    const next = { ...latest.current, ...change };
+    latest.current = next;
+    setSettings(next);
+    pending.current = pending.current.then(() => saveSettings(next)).catch(() => {
+      Alert.alert('Could not save preferences', 'Your selection applies for this session.');
+    });
+  }
+  const theme = themes[settings.appearance === 'system' ? systemMode : settings.appearance];
   return <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-    <WorkspaceTheme.Provider value={theme}><Workspace /></WorkspaceTheme.Provider>
+    <WorkspaceTheme.Provider value={theme}><Workspace settings={settings} updateSettings={updateSettings} /></WorkspaceTheme.Provider>
   </SafeAreaProvider>;
 }
 
-function Workspace() {
+function Workspace({ settings, updateSettings }: { settings: AppSettings; updateSettings: (change: Partial<AppSettings>) => void }) {
   const { C, styles, mode } = useWorkspaceTheme();
   const [screen, setScreen] = useState<Screen>('Home');
   const [resultRoute, setResultRoute] = useState<ResultRoute | null>(null);
+  const [libraryView, setLibraryView] = useState<LibraryView>({ search: '', filter: 'All', order: 'Newest' });
   const [files, setFiles] = useState<StoredFile[]>([]);
-  const [fileSearch, setFileSearch] = useState('');
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [busy, setBusy] = useState<string | null>(null);
   const [format, setFormat] = useState<OutputFormat>('jpeg');
   const { width } = useWindowDimensions();
   const fade = useRef(new Animated.Value(1)).current;
   const wide = width >= 680;
-  const visibleFiles = files.filter(file => file.name.toLowerCase().includes(fileSearch.trim().toLowerCase()));
+  const favorites = files.filter(file => file.favorite);
 
   const refresh = useCallback(async () => setFiles(await loadFiles()), []);
-  useEffect(() => { refresh().catch(() => {}); loadSettings().then(setSettings).catch(() => {}); }, [refresh]);
+  useEffect(() => { refresh().catch(() => {}); }, [refresh]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (resultRoute) {
@@ -102,11 +118,7 @@ function Workspace() {
     finally { setBusy(null); }
   };
   const showError = (error: unknown) => Alert.alert('Could not complete action', error instanceof Error ? error.message : 'Please try again.');
-  const updateQuality = async (quality: number) => {
-    const next = { jpegQuality: quality };
-    setSettings(next);
-    try { await saveSettings(next); } catch (error) { showError(error); }
-  };
+  const updateQuality = (jpegQuality: number) => updateSettings({ jpegQuality });
   const imageTask = (kind: 'convert' | 'compress' | 'pdf') => run(kind === 'pdf' ? 'Creating PDF' : kind === 'compress' ? 'Compressing image' : 'Converting image', async () => {
     const asset = await pickImage();
     if (!asset) return null;
@@ -141,6 +153,11 @@ function Workspace() {
           <ToolCard icon="document-text-outline" title="Open PDF Studio" description="Import or create PDFs" tone={C.purple} onPress={() => navigate('PDF Studio')} />
           <ToolCard icon="images-outline" title="Compress image" description="Choose JPEG quality" tone={C.blue} onPress={() => navigate('Image Tools')} />
         </View>
+        {favorites.length > 0 && <>
+          <Section title="Favorites" subtitle="Pinned to your workspace" />
+          {favorites.slice(0, 3).map(file => <FileRow key={file.id} file={file}
+            onOpen={() => setResultRoute({ file, from: screen })} onShare={() => shareFile(file).catch(showError)} />)}
+        </>}
         <Section title="Recent files" subtitle={files.length
           ? `${files.length} in library · ${formatBytes(files.reduce((total, file) => total + (file.bytes || 0), 0))}`
           : 'Your saved outputs will appear here'} />
@@ -151,10 +168,23 @@ function Workspace() {
         </> : <Empty text="Create or import a file to build your local library." />}
       </>}
       {screen === 'Convert' && <><ScreenHeading kicker="CONVERT FILES" title="Change the format." subtitle="Choose a JPEG or PNG image and make a new copy in your preferred format." /><Panel><Text style={styles.fieldLabel}>OUTPUT FORMAT</Text><View style={styles.segment}>{(['jpeg', 'png'] as const).map(value => <Pressable accessibilityRole="radio" accessibilityState={{ checked: format === value }} key={value} onPress={() => setFormat(value)} style={[styles.segmentItem, format === value && styles.segmentActive]}><Text style={[styles.segmentText, format === value && { color: C.onAccent }]}>{value.toUpperCase()}</Text></Pressable>)}</View><Text style={styles.hint}>JPEG uses your saved quality setting. PNG is lossless. Animated images and other document types are not supported.</Text><Action label="Choose image & convert" icon="folder-open-outline" onPress={() => imageTask('convert')} disabled={!!busy} /></Panel><Action label="Image compression" icon="images-outline" onPress={() => navigate('Image Tools')} secondary /></>}
-      {screen === 'PDF Studio' && <><ScreenHeading kicker="PDF STUDIO" title="A page from a picture." subtitle="Create a shareable PDF from one JPEG or PNG image, or import an existing PDF into your local library." /><Panel><View style={styles.featureIcon}><Ionicons name="document-text-outline" color={C.purple} size={30} /></View><Text style={styles.panelTitle}>Image to PDF</Text><Text style={styles.panelCopy}>Your image is fitted to a PDF page on your device.</Text><Action label="Choose image & create PDF" icon="add-outline" onPress={() => imageTask('pdf')} disabled={!!busy} /><View style={{ height: 10 }} /><Action label="Import existing PDF" icon="download-outline" secondary onPress={() => run('Importing PDF', importPdf)} disabled={!!busy} /></Panel><Text style={styles.hint}>PDF text editing, page rearrangement, and font preservation are not included in this release.</Text></>}
+      {screen === 'PDF Studio' && <PdfStudio files={files} busy={!!busy}
+        onImport={() => run('Importing PDF', importPdf)} onCreate={() => imageTask('pdf')}
+        onOpen={file => setResultRoute({ file, from: 'PDF Studio' })} onShare={file => shareFile(file).catch(showError)} />}
       {screen === 'Image Tools' && <><ScreenHeading kicker="IMAGE TOOLS" title="Keep the detail. Lose the weight." subtitle="Compress a JPEG or PNG into a smaller JPEG copy. Compare the size when it finishes." /><Panel><Text style={styles.fieldLabel}>JPEG QUALITY · {Math.round(settings.jpegQuality * 100)}%</Text><View style={styles.qualityRow}>{[0.45, 0.72, 0.9].map((value, index) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: settings.jpegQuality === value }} onPress={() => updateQuality(value)} style={[styles.qualityOption, settings.jpegQuality === value && styles.qualitySelected]}><Text style={[styles.qualityText, settings.jpegQuality === value && { color: C.onAccent }]}>{['Small', 'Balanced', 'High'][index]}</Text></Pressable>)}</View><Text style={styles.hint}>Photos with large flat areas may not become smaller. PNG transparency becomes an opaque JPEG.</Text><Action label="Choose image & compress" icon="contract-outline" onPress={() => imageTask('compress')} disabled={!!busy} /></Panel></>}
-      {screen === 'Recent' && <><ScreenHeading kicker="YOUR FILES" title="Made here. Kept here." subtitle="Search your locally saved outputs and imported PDFs." /><View style={styles.searchBox}><Ionicons name="search-outline" size={20} color={C.muted} /><TextInput accessibilityLabel="Search saved files" placeholder="Search files" placeholderTextColor={C.muted} value={fileSearch} onChangeText={setFileSearch} autoCorrect={false} style={styles.searchInput} /></View>{visibleFiles.length ? visibleFiles.map(file => <FileRow key={file.id} file={file} onOpen={() => setResultRoute({ file, from: screen })} onShare={() => shareFile(file).catch(showError)} />) : <Empty text={files.length ? 'No files match your search.' : 'No files yet. Create one from the toolkit.'} />}</>}
-      {screen === 'Settings' && <><ScreenHeading kicker="SETTINGS" title="Your space, your rules." subtitle="OmniForge processes files on this device and stores outputs locally." /><Panel><Text style={styles.panelTitle}>Default JPEG quality</Text><Text style={styles.panelCopy}>Used for image conversion and compression.</Text><View style={styles.qualityRow}>{[0.45, 0.72, 0.9].map((value, index) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: settings.jpegQuality === value }} onPress={() => updateQuality(value)} style={[styles.qualityOption, settings.jpegQuality === value && styles.qualitySelected]}><Text style={[styles.qualityText, settings.jpegQuality === value && { color: C.onAccent }]}>{['45%', '72%', '90%'][index]}</Text></Pressable>)}</View></Panel><Panel><Text style={styles.panelTitle}>Local library</Text><Text style={styles.panelCopy}>{files.length} saved files. Clearing removes the app's stored copies and history.</Text><Action label="Clear saved files" icon="trash-outline" secondary onPress={() => Alert.alert('Clear saved files?', 'This deletes OmniForge copies from this device.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => { clearFiles().then(refresh).catch(showError); } }])} /></Panel><Text style={styles.version}>OmniForge 0.1.0 · Offline first</Text></>}
+      {screen === 'Recent' && <FileLibrary files={files} view={libraryView} onViewChange={setLibraryView} onOpen={file => setResultRoute({ file, from: 'Recent' })}
+        onShare={file => shareFile(file).catch(showError)} onFavorite={file => toggleFavorite(file.id).then(setFiles).catch(showError)} />}
+      {screen === 'Settings' && <><ScreenHeading kicker="SETTINGS" title="Your space, your rules." subtitle="OmniForge processes files on this device and stores outputs locally." />
+        <Panel><Text style={styles.panelTitle}>Appearance</Text>
+          <View style={[styles.qualityRow, { marginBottom: 0 }]}>{(['system', 'light', 'dark'] as const).map(value => {
+            const selected = settings.appearance === value;
+            const label = value === 'system' ? 'System' : value === 'light' ? 'Light' : 'Dark';
+            return <Pressable key={value} accessibilityRole="radio" accessibilityLabel={label + ' theme'} accessibilityState={{ checked: selected }}
+              onPress={() => updateSettings({ appearance: value })} style={[styles.qualityOption, { minHeight: 48 }, selected && styles.qualitySelected]}>
+              <Text style={[styles.qualityText, selected && { color: C.onAccent }]}>{label}</Text>
+            </Pressable>;
+          })}</View>
+        </Panel><Panel><Text style={styles.panelTitle}>Default JPEG quality</Text><Text style={styles.panelCopy}>Used for image conversion and compression.</Text><View style={styles.qualityRow}>{[0.45, 0.72, 0.9].map((value, index) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: settings.jpegQuality === value }} onPress={() => updateQuality(value)} style={[styles.qualityOption, settings.jpegQuality === value && styles.qualitySelected]}><Text style={[styles.qualityText, settings.jpegQuality === value && { color: C.onAccent }]}>{['45%', '72%', '90%'][index]}</Text></Pressable>)}</View></Panel><Panel><Text style={styles.panelTitle}>Local library</Text><Text style={styles.panelCopy}>{files.length} saved files. Clearing removes the app's stored copies and history.</Text><Action label="Clear saved files" icon="trash-outline" secondary onPress={() => Alert.alert('Clear saved files?', 'This deletes OmniForge copies from this device.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => { clearFiles().then(refresh).catch(showError); } }])} /></Panel><Text style={styles.version}>OmniForge 0.1.0 · Offline first</Text></>}
       </>}
     </ScrollView></Animated.View>
     {busy && <View accessibilityLiveRegion="polite" style={styles.busy}><ActivityIndicator color={C.mint} /><Text style={styles.busyText}>{busy}…</Text></View>}
@@ -208,7 +238,8 @@ function FileResult({ file, onBack, onGenerated }: {
         {isImage && preview === 'loading' && <ActivityIndicator accessibilityLabel="Loading image preview" color={C.mint} />}
         {isImage && preview === 'failed' && <Text style={styles.hint}>The saved image could not be displayed.</Text>}
         {file.mimeType === 'application/pdf' && <PdfPreview file={file} onGenerated={onGenerated} />}
-        {!isImage && file.mimeType !== 'application/pdf' && <Text style={styles.hint}>Preview is unavailable for this format.</Text>}
+        {file.mimeType === 'text/plain' && <TextPreview file={file} />}
+        {!isImage && file.mimeType !== 'application/pdf' && file.mimeType !== 'text/plain' && <Text style={styles.hint}>Preview is unavailable for this format.</Text>}
       </View>
       <View accessibilityLiveRegion="polite">
         {pending && <ActivityIndicator accessibilityLabel="Preparing file action" color={C.mint} />}
@@ -231,6 +262,7 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(false);
   const [showText, setShowText] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [thumbnailsOpen, setThumbnailsOpen] = useState(false);
   const [jump, setJump] = useState<string | null>(null);
@@ -239,13 +271,13 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
   const [saveError, setSaveError] = useState('');
   const saveInFlight = useRef(false);
 
-  async function savePage() {
+  async function savePage(format: OutputFormat | 'text') {
     if (saveInFlight.current) return;
     saveInFlight.current = true;
     setSavingPage(true);
     setSaveError('');
     try {
-      const output = await savePdfPageAsJpeg(file, index);
+      const output = format === 'text' ? await savePdfText(file) : await savePdfPageImage(file, index, format);
       setSavingPage(false);
       onGenerated(output);
     } catch (cause) {
@@ -309,11 +341,16 @@ function PdfPreview({ file, onGenerated }: { file: StoredFile; onGenerated: (fil
           <Action label={showText ? 'Hide page text' : 'Read page text'} onPress={() => setShowText(!showText)} secondary />}
         {Platform.OS === 'android' && Number(Platform.Version) >= 35 &&
           <Action label="Find in PDF" onPress={() => setSearchOpen(true)} secondary />}
-        <Action label={savingPage ? 'Saving page' : 'Save page as JPEG'} onPress={savePage} disabled={savingPage} secondary />
+        <Action label={savingPage ? 'Saving page' : 'Save page as JPEG'} onPress={() => savePage('jpeg')} disabled={savingPage} secondary />
+        {supportsPdfTextEditing() && <Action label="Edit existing text" icon="create-outline" onPress={() => setEditorOpen(true)} secondary />}
+        <Action label="Save page as PNG" onPress={() => savePage('png')} disabled={savingPage} secondary />
+        {Platform.OS === 'android' && Number(Platform.Version) >= 35 &&
+          <Action label="Export PDF text" onPress={() => savePage('text')} disabled={savingPage} secondary />}
         {!!saveError && <Text accessibilityRole="alert" style={{ color: C.danger }}>{saveError}</Text>}
         {showText && <PdfPageText key={index} file={file} index={index} />}
       </View>
     </>}
+    {editorOpen && <PdfTextEditor file={file} index={index} onClose={() => setEditorOpen(false)} onSaved={onGenerated} />}
     {thumbnailsOpen && page && <PdfThumbnails file={file} pageCount={page.pageCount} current={index}
       onClose={() => setThumbnailsOpen(false)} onSelect={pageIndex => {
         setThumbnailsOpen(false);

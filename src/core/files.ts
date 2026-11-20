@@ -1,4 +1,4 @@
-import { renderPdfPage } from './androidOutput';
+import { writePdfPageImage, writePdfText } from './androidOutput';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -35,17 +35,36 @@ export async function loadFiles(): Promise<StoredFile[]> {
   }
 }
 
+// Serialize library writes, including the file operation and its index update.
+let pendingWrite: Promise<void> = Promise.resolve();
+function writeLibrary<T>(operation: () => Promise<T>): Promise<T> {
+  const result = pendingWrite.then(operation);
+  pendingWrite = result.then(() => undefined, () => undefined);
+  return result;
+}
+
 async function saveRecord(record: StoredFile): Promise<StoredFile> {
   const previous = await loadFiles();
-  await AsyncStorage.setItem(FILES_KEY, JSON.stringify([record, ...previous].slice(0, 100)));
+  await AsyncStorage.setItem(FILES_KEY, JSON.stringify([record, ...previous]));
   return record;
+}
+
+export async function toggleFavorite(id: string): Promise<StoredFile[]> {
+  return writeLibrary(async () => {
+    const previous = await loadFiles();
+    if (!previous.some(file => file.id === id)) throw new Error('This file is no longer in the library.');
+    const next = previous.map(file => file.id === id ? { ...file, favorite: !file.favorite } : file);
+    await AsyncStorage.setItem(FILES_KEY, JSON.stringify(next));
+    return next;
+  });
 }
 
 export async function loadSettings(): Promise<AppSettings> {
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
     const parsed = raw ? JSON.parse(raw) as Partial<AppSettings> : {};
-    return { jpegQuality: typeof parsed.jpegQuality === 'number' && parsed.jpegQuality >= 0.1 && parsed.jpegQuality <= 1 ? parsed.jpegQuality : DEFAULT_SETTINGS.jpegQuality };
+    return { appearance: parsed.appearance === 'light' || parsed.appearance === 'dark' ? parsed.appearance : 'system',
+      jpegQuality: typeof parsed.jpegQuality === 'number' && parsed.jpegQuality >= 0.1 && parsed.jpegQuality <= 1 ? parsed.jpegQuality : DEFAULT_SETTINGS.jpegQuality };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -68,65 +87,101 @@ export async function importPdf(): Promise<StoredFile | null> {
   if (result.canceled) return null;
   const asset = result.assets[0];
   if (asset.mimeType !== 'application/pdf' && !asset.name.toLowerCase().endsWith('.pdf')) throw new Error('Choose a PDF document.');
-  await ensureRoot();
-  const id = newId();
-  const uri = `${ROOT}${id}.pdf`;
-  await FileSystem.copyAsync({ from: asset.uri, to: uri });
-  return saveRecord({ id, name: asset.name, uri, mimeType: 'application/pdf', bytes: await fileSize(uri), createdAt: new Date().toISOString(), kind: 'import' });
+  return writeLibrary(async () => {
+    await ensureRoot();
+    const id = newId();
+    const uri = `${ROOT}${id}.pdf`;
+    await FileSystem.copyAsync({ from: asset.uri, to: uri });
+    return saveRecord({ id, name: asset.name, uri, mimeType: 'application/pdf', bytes: await fileSize(uri), createdAt: new Date().toISOString(), kind: 'import' });
+  });
 }
 
 export async function convertImage(asset: DocumentPicker.DocumentPickerAsset, format: OutputFormat, quality: number, kind: 'convert' | 'compress' = 'convert'): Promise<StoredFile> {
   if (!supportedImage(asset.mimeType, asset.name)) throw new Error('Only JPEG and PNG images are supported.');
-  await ensureRoot();
-  const id = newId();
-  const saveFormat = format === 'png' ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG;
-  const result = await ImageManipulator.manipulateAsync(asset.uri, [], { format: saveFormat, compress: format === 'jpeg' ? quality : 1 });
-  const name = `${safeFileName(asset.name)}-${kind === 'compress' ? 'compressed' : 'converted'}.${format === 'jpeg' ? 'jpg' : 'png'}`;
-  const uri = `${ROOT}${id}-${name}`;
-  await FileSystem.copyAsync({ from: result.uri, to: uri });
-  return saveRecord({ id, name, uri, mimeType: format === 'png' ? 'image/png' : 'image/jpeg', bytes: await fileSize(uri), createdAt: new Date().toISOString(), kind });
+  return writeLibrary(async () => {
+    await ensureRoot();
+    const id = newId();
+    const saveFormat = format === 'png' ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG;
+    const result = await ImageManipulator.manipulateAsync(asset.uri, [], { format: saveFormat, compress: format === 'jpeg' ? quality : 1 });
+    const name = `${safeFileName(asset.name)}-${kind === 'compress' ? 'compressed' : 'converted'}.${format === 'jpeg' ? 'jpg' : 'png'}`;
+    const uri = `${ROOT}${id}-${name}`;
+    await FileSystem.copyAsync({ from: result.uri, to: uri });
+    return saveRecord({ id, name, uri, mimeType: format === 'png' ? 'image/png' : 'image/jpeg', bytes: await fileSize(uri), createdAt: new Date().toISOString(), kind });
+  });
 }
 
 export async function imageToPdf(asset: DocumentPicker.DocumentPickerAsset): Promise<StoredFile> {
   if (!supportedImage(asset.mimeType, asset.name)) throw new Error('Choose a JPEG or PNG image.');
-  await ensureRoot();
-  const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
-  const mime = asset.mimeType === 'image/png' || asset.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-  const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;display:flex;align-items:center;justify-content:center"><img src="data:${mime};base64,${base64}" style="max-width:100%;max-height:100%;object-fit:contain" /></body></html>`;
-  const printed = await Print.printToFileAsync({ html });
-  const id = newId();
-  const name = `${safeFileName(asset.name)}.pdf`;
-  const uri = `${ROOT}${id}-${name}`;
-  await FileSystem.copyAsync({ from: printed.uri, to: uri });
-  return saveRecord({ id, name, uri, mimeType: 'application/pdf', bytes: await fileSize(uri), createdAt: new Date().toISOString(), kind: 'pdf' });
+  return writeLibrary(async () => {
+    await ensureRoot();
+    const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+    const mime = asset.mimeType === 'image/png' || asset.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+    const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;display:flex;align-items:center;justify-content:center"><img src="data:${mime};base64,${base64}" style="max-width:100%;max-height:100%;object-fit:contain" /></body></html>`;
+    const printed = await Print.printToFileAsync({ html });
+    const id = newId();
+    const name = `${safeFileName(asset.name)}.pdf`;
+    const uri = `${ROOT}${id}-${name}`;
+    await FileSystem.copyAsync({ from: printed.uri, to: uri });
+    return saveRecord({ id, name, uri, mimeType: 'application/pdf', bytes: await fileSize(uri), createdAt: new Date().toISOString(), kind: 'pdf' });
+  });
 }
 
-export async function savePdfPageAsJpeg(file: StoredFile, pageIndex: number): Promise<StoredFile> {
+export async function savePdfPageImage(file: StoredFile, pageIndex: number, format: OutputFormat): Promise<StoredFile> {
   if (file.mimeType !== 'application/pdf' || !Number.isSafeInteger(pageIndex) || pageIndex < 0) {
     throw new Error('Choose a valid PDF page.');
   }
 
-  const rendered = await renderPdfPage(file, pageIndex, 1800);
-  const marker = 'data:image/jpeg;base64,';
-  if (!rendered.uri.startsWith(marker)) throw new Error('The page renderer did not return a JPEG.');
-  const encoded = rendered.uri.slice(marker.length);
-  if (!encoded.startsWith('/9j/')) throw new Error('The rendered JPEG is invalid.');
+  const name = `${safeFileName(file.name)}-page-${pageIndex + 1}.${format === 'png' ? 'png' : 'jpg'}`;
+  return saveConvertedFile(name, 'image/' + format, temp => writePdfPageImage(file, pageIndex, temp, format));
+}
 
-  await ensureRoot();
-  const id = newId();
-  const name = `${safeFileName(file.name)}-page-${pageIndex + 1}.jpg`;
-  const uri = `${ROOT}${id}-${name}`;
-  const temporary = `${uri}.part`;
-  try {
-    await FileSystem.writeAsStringAsync(temporary, encoded, { encoding: FileSystem.EncodingType.Base64 });
-    const bytes = await fileSize(temporary);
-    if (bytes < 4) throw new Error('The rendered JPEG could not be saved.');
-    await FileSystem.moveAsync({ from: temporary, to: uri });
-    return await saveRecord({ id, name, uri, mimeType: 'image/jpeg', bytes, createdAt: new Date().toISOString(), kind: 'convert' });
-  } catch (error) {
-    await Promise.allSettled([temporary, uri].map(path => FileSystem.deleteAsync(path, { idempotent: true })));
-    throw error;
+export async function savePdfText(file: StoredFile): Promise<StoredFile> {
+  if (file.mimeType !== 'application/pdf') throw new Error('Choose a PDF document.');
+  return saveConvertedFile(`${safeFileName(file.name)}.txt`, 'text/plain', temp => writePdfText(file, temp));
+}
+
+async function saveConvertedFile(name: string, mimeType: string, write: (temp: string) => Promise<void>) {
+  return writeLibrary(async () => {
+    await ensureRoot();
+    const id = newId();
+    const uri = `${ROOT}${id}-${name}`;
+    const temporary = `${uri}.part`;
+    try {
+      await write(temporary);
+      const bytes = await fileSize(temporary);
+      if (!bytes) throw new Error('The generated file is empty.');
+      await FileSystem.moveAsync({ from: temporary, to: uri });
+      return await saveRecord({ id, name, uri, mimeType, bytes, createdAt: new Date().toISOString(), kind: 'convert' });
+    } catch (error) {
+      await Promise.allSettled([temporary, uri].map(path => FileSystem.deleteAsync(path, { idempotent: true })));
+      throw error;
+    }
+  });
+}
+
+export async function saveEditedPdf(source: StoredFile, workingUri: string): Promise<StoredFile> {
+  const prefix = FileSystem.cacheDirectory + 'pdf-edits/';
+  if (source.mimeType !== 'application/pdf' || !workingUri.startsWith(prefix) ||
+      !/^edit-[\w-]+\.pdf$/.test(workingUri.slice(prefix.length))) {
+    throw new Error('The edited preview is no longer available.');
   }
+  return writeLibrary(async () => {
+    await ensureRoot();
+    const id = newId();
+    const name = `${safeFileName(source.name)}-edited.pdf`;
+    const uri = ROOT + id + '-' + name;
+    const temp = uri + '.part';
+    try {
+      await FileSystem.copyAsync({ from: workingUri, to: temp });
+      const bytes = await fileSize(temp);
+      if (!bytes) throw new Error('The edited PDF is empty.');
+      await FileSystem.moveAsync({ from: temp, to: uri });
+      return await saveRecord({ id, name, uri, bytes, mimeType: 'application/pdf', createdAt: new Date().toISOString(), kind: 'pdf' });
+    } catch (error) {
+      await Promise.allSettled([temp, uri].map(path => FileSystem.deleteAsync(path, { idempotent: true })));
+      throw error;
+    }
+  });
 }
 
 export async function shareFile(file: StoredFile): Promise<void> {
@@ -138,7 +193,9 @@ export async function shareFile(file: StoredFile): Promise<void> {
 }
 
 export async function clearFiles(): Promise<void> {
-  await AsyncStorage.removeItem(FILES_KEY);
-  const info = await FileSystem.getInfoAsync(ROOT);
-  if (info.exists) await FileSystem.deleteAsync(ROOT, { idempotent: true });
+  await writeLibrary(async () => {
+    const info = await FileSystem.getInfoAsync(ROOT);
+    if (info.exists) await FileSystem.deleteAsync(ROOT, { idempotent: true });
+    await AsyncStorage.removeItem(FILES_KEY);
+  });
 }
