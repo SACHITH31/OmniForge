@@ -28,8 +28,14 @@ def compare(source, edited):
     assert "Name: Kasa Sachith" in new_text and "1234" not in new_text and "Invoice 482" in new_text, repr(new_text)
     old, old_font = text_layout(source, "Name: 1234")
     new, new_font = text_layout(edited, "Name: Kasa Sachith")
-    for attribute in ("family", "size", "color"):
+    for attribute in ("family", "size"):
         assert old_font.get(attribute) == new_font.get(attribute), (attribute, old_font.attrib, new_font.attrib)
+    # The Android page object stores packed 8-bit ARGB. PDF DeviceRGB
+    # coordinates can round differently when Poppler reads the source.
+    old_rgb = bytes.fromhex(old_font.get("color").lstrip("#"))
+    new_rgb = bytes.fromhex(new_font.get("color").lstrip("#"))
+    assert len(old_rgb) == len(new_rgb) == 3, (old_rgb, new_rgb)
+    assert all(abs(a - b) <= 1 for a, b in zip(old_rgb, new_rgb)), (old_rgb, new_rgb)
     for attribute in ("top", "left", "height"):
         assert abs(int(old.get(attribute)) - int(new.get(attribute))) <= 1, (old.attrib, new.attrib)
     assert int(new.get("width")) > int(old.get("width"))
